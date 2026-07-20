@@ -1,12 +1,14 @@
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
 
 const execFileAsync = promisify(execFile);
 
 const SWITCH_COMMAND = "worktreeManager.switch";
+const RENAME_COMMAND = "worktreeManager.rename";
+const RENAME_TOOLTIP = "Rename";
 const PINNED_KEY = "pinnedWorktreeIds";
 const COLOUR_KEY = "worktreeColours";
 const MAIN_WORKTREE_ID = "__main__";
@@ -143,6 +145,78 @@ const renderStatus = ({ item, worktree, colour }: RenderStatusProps) => {
   item.show();
 };
 
+type ValidateNameProps = {
+  value: string;
+  currentName: string;
+  parent: string;
+};
+
+const validateName = ({ value, currentName, parent }: ValidateNameProps) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "Name cannot be empty.";
+  if (trimmed === currentName) return undefined;
+  if (/[/\\]/.test(trimmed)) return "Name cannot contain a path separator.";
+  if (trimmed === "." || trimmed === "..") return "Invalid name.";
+  if (existsSync(join(parent, trimmed))) return `"${trimmed}" already exists.`;
+  return undefined;
+};
+
+const stderrOf = (error: unknown) => {
+  if (error instanceof Error && "stderr" in error) return String(error.stderr).trim();
+  return error instanceof Error ? error.message : String(error);
+};
+
+type RenameWorktreeProps = {
+  worktree: Worktree;
+  isCurrent: boolean;
+  gitCwd: string;
+};
+
+/* WHY: git refuses to move the main worktree, and refuses again on a locked one or with
+   submodules — its stderr is the useful message, so surface it verbatim rather than guessing. */
+const renameWorktree = async ({ worktree, isCurrent, gitCwd }: RenameWorktreeProps) => {
+  if (worktree.isMain) {
+    vscode.window.showErrorMessage(
+      "Cannot rename the primary worktree — git worktree move refuses to move it.",
+    );
+    return;
+  }
+
+  const currentName = basename(worktree.path);
+  const parent = dirname(worktree.path);
+  const newName = await vscode.window.showInputBox({
+    title: `Rename worktree "${currentName}"`,
+    value: currentName,
+    valueSelection: [0, currentName.length],
+    prompt: "Renames the folder on disk. Terminal panes sitting in it keep the old path.",
+    validateInput: (value) => validateName({ value, currentName, parent }),
+  });
+
+  const trimmed = newName?.trim();
+  if (!trimmed || trimmed === currentName) return;
+
+  const target = join(parent, trimmed);
+  try {
+    await execFileAsync("git", ["worktree", "move", worktree.path, target], {
+      cwd: gitCwd,
+    });
+  } catch (error) {
+    vscode.window.showErrorMessage(`git worktree move failed — ${stderrOf(error)}`);
+    return;
+  }
+
+  if (!isCurrent) {
+    vscode.window.showInformationMessage(`Renamed "${currentName}" to "${trimmed}".`);
+    return;
+  }
+
+  /* WHY: openFolder tears down the extension host — nothing after it runs, and the old path
+     is already stale, so this must be the last statement. */
+  vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(target), {
+    forceReuseWindow: true,
+  });
+};
+
 type WorktreeItem = vscode.QuickPickItem & { worktree: Worktree };
 
 type ToItemProps = {
@@ -155,6 +229,9 @@ const toItem = ({ worktree, isPinned, isCurrent }: ToItemProps): WorktreeItem =>
   label: `${isCurrent ? "$(check)" : "$(circle-outline)"} ${basename(worktree.path)}`,
   description: worktree.branch,
   buttons: [
+    ...(worktree.isMain
+      ? []
+      : [{ iconPath: new vscode.ThemeIcon("edit"), tooltip: RENAME_TOOLTIP }]),
     {
       iconPath: new vscode.ThemeIcon(isPinned ? "pinned" : "pin"),
       tooltip: isPinned ? "Unpin" : "Pin",
@@ -216,8 +293,19 @@ const showSwitcher = async ({ context, cwd, currentPath }: ShowSwitcherProps) =>
   };
   refresh();
 
-  picker.onDidTriggerItemButton(async ({ item }) => {
+  picker.onDidTriggerItemButton(async ({ item, button }) => {
     if (!isWorktreeItem(item)) return;
+
+    if (button.tooltip === RENAME_TOOLTIP) {
+      picker.dispose();
+      await renameWorktree({
+        worktree: item.worktree,
+        isCurrent: item.worktree.path === currentPath,
+        gitCwd: worktrees.find((worktree) => worktree.isMain)?.path ?? cwd,
+      });
+      return;
+    }
+
     const pinned = context.globalState.get<string[]>(PINNED_KEY, []);
     const next = pinned.includes(item.worktree.id)
       ? pinned.filter((id) => id !== item.worktree.id)
@@ -251,6 +339,23 @@ export const activate = async (context: vscode.ExtensionContext) => {
         return;
       }
       return showSwitcher({ context, cwd: root, currentPath: root });
+    }),
+    vscode.commands.registerCommand(RENAME_COMMAND, async () => {
+      if (!root) {
+        vscode.window.showWarningMessage("Worktree Manager: no folder open.");
+        return;
+      }
+      const worktrees = await listWorktrees(root).catch(() => []);
+      const current = worktrees.find((worktree) => worktree.path === root);
+      if (!current) {
+        vscode.window.showWarningMessage("Worktree Manager: this folder is not a git worktree.");
+        return;
+      }
+      return renameWorktree({
+        worktree: current,
+        isCurrent: true,
+        gitCwd: worktrees.find((worktree) => worktree.isMain)?.path ?? root,
+      });
     }),
   );
 

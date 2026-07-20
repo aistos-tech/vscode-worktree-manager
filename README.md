@@ -10,9 +10,24 @@ Per-worktree identity and fast switching for git worktrees in VS Code.
   chosen one **in the same window**. Pinned worktrees sort first.
 - **Pins** — pin/unpin from the button on each quick pick row. Stored in `globalState`, keyed by
   the git admin directory name, which survives `git worktree move`.
+- **Rename** — `Worktree: Rename…`, or the pencil button on any quick pick row. Runs
+  `git worktree move`, then reopens the window if you renamed the one you're in. The VS Code
+  title follows automatically, since the default `window.title` contains `${rootName}`.
+  Pin and colour survive, because they key on the admin directory rather than the folder name.
 
-Deliberately **not** in v0: title bar colouring (requires writing user settings), rename.
-See the plan for the staging rationale.
+## Deliberately not included
+
+**Title bar colouring.** There is no API to colour a VS Code window — it can only be done by
+persisting `workbench.colorCustomizations` to a settings file. Worse, with
+`workbench.experimental.modernUI` enabled, VS Code ships
+
+```css
+.monaco-workbench.floating-panels .part.titlebar { background-color: transparent !important }
+```
+
+which no configuration layer can override ([microsoft/vscode#326126](https://github.com/microsoft/vscode/issues/326126)).
+The same rule covers the activity bar and status bar *backgrounds*. Foregrounds are untouched —
+which is exactly why the status bar item's colour works here.
 
 ## Develop
 

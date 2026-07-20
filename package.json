@@ -1,0 +1,47 @@
+{
+  "name": "vscode-worktree-manager",
+  "displayName": "Worktree Manager",
+  "description": "Per-worktree identity and fast switching for git worktrees",
+  "version": "0.1.0",
+  "publisher": "aistos-tech",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.104.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "worktreeManager.switch",
+        "title": "Worktree: Switch…"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "worktreeManager.switch",
+        "key": "ctrl+shift+w"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "bun build src/extension.ts --outdir dist --target node --format cjs --external vscode --minify",
+    "dev": "bun build src/extension.ts --outdir dist --target node --format cjs --external vscode --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "package": "bun run build && bun x @vscode/vsce package --no-dependencies --skip-license --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.0",
+    "@types/node": "^22.15.0",
+    "@types/vscode": "^1.104.0",
+    "typescript": "^5.9.0"
+  }
+}

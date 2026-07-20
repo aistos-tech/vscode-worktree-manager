@@ -104,14 +104,19 @@ const ensureColours = async ({ context, worktrees }: EnsureColoursProps) => {
   return assigned;
 };
 
-const parseWorktree = (record: string) => {
-  const fields = record.split("\0").filter(Boolean);
-  const worktreePath = fields
+const stderrOf = (error: unknown) => {
+  if (error instanceof Error && "stderr" in error) return String(error.stderr).trim();
+  return error instanceof Error ? error.message : String(error);
+};
+
+const parseWorktree = (fields: string[]) => {
+  const present = fields.filter(Boolean);
+  const worktreePath = present
     .find((field) => field.startsWith("worktree "))
     ?.slice("worktree ".length);
   if (!worktreePath) return undefined;
 
-  const branchRef = fields.find((field) => field.startsWith("branch "))?.slice("branch ".length);
+  const branchRef = present.find((field) => field.startsWith("branch "))?.slice("branch ".length);
   const id = resolveWorktreeId(worktreePath);
 
   return {
@@ -122,12 +127,46 @@ const parseWorktree = (record: string) => {
   };
 };
 
+/* WHY: `worktree list -z` needs git ≥ 2.36 and hard-errors (exit 129) on older git — Ubuntu
+   22.04 ships 2.34, so a Remote-SSH host is a realistic case. Fall back to the newline format,
+   but only for that specific rejection: any other git failure must still propagate. */
+const readWorktreeRecords = async (cwd: string) => {
+  try {
+    const { stdout } = await execFileAsync("git", ["worktree", "list", "--porcelain", "-z"], {
+      cwd,
+    });
+    return stdout.split("\0\0").map((record) => record.split("\0"));
+  } catch (error) {
+    if (!/unknown (switch|option)/i.test(stderrOf(error))) throw error;
+    const { stdout } = await execFileAsync("git", ["worktree", "list", "--porcelain"], { cwd });
+    return stdout.split("\n\n").map((record) => record.split("\n"));
+  }
+};
+
 const listWorktrees = async (cwd: string) => {
-  const { stdout } = await execFileAsync("git", ["worktree", "list", "--porcelain", "-z"], { cwd });
-  return stdout
-    .split("\0\0")
-    .map(parseWorktree)
-    .filter((worktree) => worktree !== undefined);
+  const records = await readWorktreeRecords(cwd);
+  return records.map(parseWorktree).filter((worktree) => worktree !== undefined);
+};
+
+const isNotARepo = (error: unknown) => /not a git repository/i.test(stderrOf(error));
+
+/* WHY: a swallowed git failure looks identical to "no worktrees" — the extension just fails to
+   appear, with nothing to diagnose. Only a non-repo folder is legitimately silent, and only when
+   the user did not ask for anything. */
+type LoadWorktreesProps = {
+  cwd: string;
+  announce: boolean;
+};
+
+const loadWorktrees = async ({ cwd, announce }: LoadWorktreesProps) => {
+  try {
+    return await listWorktrees(cwd);
+  } catch (error) {
+    if (announce || !isNotARepo(error)) {
+      vscode.window.showErrorMessage(`Worktree Manager: ${stderrOf(error)}`);
+    }
+    return [];
+  }
 };
 
 type RenderStatusProps = {
@@ -161,11 +200,6 @@ const validateName = ({ value, currentName, parent }: ValidateNameProps) => {
   if (trimmed === "." || trimmed === "..") return "Invalid name.";
   if (existsSync(join(parent, trimmed))) return `"${trimmed}" already exists.`;
   return undefined;
-};
-
-const stderrOf = (error: unknown) => {
-  if (error instanceof Error && "stderr" in error) return String(error.stderr).trim();
-  return error instanceof Error ? error.message : String(error);
 };
 
 type RenameWorktreeProps = {
@@ -392,7 +426,8 @@ type ShowSwitcherProps = {
 };
 
 const showSwitcher = async ({ context, cwd, currentPath }: ShowSwitcherProps) => {
-  const worktrees = await listWorktrees(cwd);
+  const worktrees = await loadWorktrees({ cwd, announce: true });
+  if (worktrees.length === 0) return;
   await ensureColours({ context, worktrees });
 
   const picker = vscode.window.createQuickPick<vscode.QuickPickItem>();
@@ -474,7 +509,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
         vscode.window.showWarningMessage("Worktree Manager: no folder open.");
         return;
       }
-      const worktrees = await listWorktrees(root).catch(() => []);
+      const worktrees = await loadWorktrees({ cwd: root, announce: true });
       const current = worktrees.find((worktree) => worktree.path === root);
       if (!current) {
         vscode.window.showWarningMessage("Worktree Manager: this folder is not a git worktree.");
@@ -491,7 +526,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
         vscode.window.showWarningMessage("Worktree Manager: no folder open.");
         return;
       }
-      const worktrees = await listWorktrees(root).catch(() => []);
+      const worktrees = await loadWorktrees({ cwd: root, announce: true });
       const current = worktrees.find((worktree) => worktree.path === root);
       if (!current) {
         vscode.window.showWarningMessage("Worktree Manager: this folder is not a git worktree.");
@@ -510,7 +545,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
 
   if (!root) return;
 
-  const worktrees = await listWorktrees(root).catch(() => []);
+  const worktrees = await loadWorktrees({ cwd: root, announce: false });
   const current = worktrees.find((worktree) => worktree.path === root);
   if (!current) return;
 

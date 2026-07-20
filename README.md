@@ -21,6 +21,23 @@ Per-worktree identity and fast switching for git worktrees in VS Code.
   window at the primary worktree. Pin and colour entries are released, so the palette slot is
   reusable.
 
+## Remote-SSH
+
+Works unmodified. The manifest pins `extensionKind: ["workspace"]`, so it runs on the remote host
+where git and the files are. `Uri.file()` is correct there and needs no special handling — the
+RPC boundary rewrites outgoing `file://` URIs to `vscode-remote://` with the remote authority
+before the workbench sees them, which is the same mechanism VS Code's own worktree commands rely
+on.
+
+`git worktree list --porcelain -z` needs **git ≥ 2.36**; older git rejects the switch outright
+(exit 129). Since Ubuntu 22.04 ships 2.34 and Debian 11 ships 2.30, the reader falls back to the
+newline format — verified to produce identical results. Any *other* git failure propagates and is
+surfaced, rather than being swallowed into an empty list.
+
+Pins and colours live in `globalState`, which is stored on the **local** machine and shared across
+remote hosts — but is partitioned per VS Code **profile**. Using a dedicated profile for remote
+work gives you a separate set of colours.
+
 ## Deliberately not included
 
 **Title bar colouring.** There is no API to colour a VS Code window — it can only be done by

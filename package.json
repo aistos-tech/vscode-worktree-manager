@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Worktree Manager",
   "description": "Per-worktree identity and fast switching for git worktrees",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -14,6 +14,19 @@
     "Other"
   ],
   "main": "./dist/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Needs a real filesystem and the git binary."
+    },
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Runs git commands in the opened folder."
+    }
+  },
   "activationEvents": [
     "onStartupFinished"
   ],
@@ -44,6 +57,7 @@
     "dev": "bun build src/extension.ts --outdir dist --target node --format cjs --external vscode --watch",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
+    "format": "biome check --write .",
     "package": "bun run build && bun x @vscode/vsce package --no-dependencies --skip-license --allow-missing-repository"
   },
   "devDependencies": {

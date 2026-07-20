@@ -8,7 +8,9 @@ const execFileAsync = promisify(execFile);
 
 const SWITCH_COMMAND = "worktreeManager.switch";
 const RENAME_COMMAND = "worktreeManager.rename";
+const DELETE_COMMAND = "worktreeManager.delete";
 const RENAME_TOOLTIP = "Rename";
+const DELETE_TOOLTIP = "Delete";
 const PINNED_KEY = "pinnedWorktreeIds";
 const COLOUR_KEY = "worktreeColours";
 const MAIN_WORKTREE_ID = "__main__";
@@ -217,6 +219,116 @@ const renameWorktree = async ({ worktree, isCurrent, gitCwd }: RenameWorktreePro
   });
 };
 
+type RemoveAtProps = {
+  path: string;
+  gitCwd: string;
+  force: boolean;
+};
+
+const removeWorktreeAt = ({ path, gitCwd, force }: RemoveAtProps) =>
+  execFileAsync("git", ["worktree", "remove", ...(force ? ["--force"] : []), path], {
+    cwd: gitCwd,
+  });
+
+const describeDirt = async (worktreePath: string) => {
+  const { stdout } = await execFileAsync("git", ["status", "--porcelain"], {
+    cwd: worktreePath,
+  });
+  const lines = stdout.split("\n").filter(Boolean);
+  const shown = lines.slice(0, 10).join("\n");
+  return lines.length > 10 ? `${shown}\n… and ${lines.length - 10} more` : shown;
+};
+
+/* WHY: the colour map is keyed by worktree id and bounded by the palette, so an entry left
+   behind after a delete permanently occupies one of 16 slots. */
+type ForgetProps = {
+  context: vscode.ExtensionContext;
+  id: string;
+};
+
+const forgetWorktree = async ({ context, id }: ForgetProps) => {
+  const colours = { ...context.globalState.get<ColourMap>(COLOUR_KEY, {}) };
+  delete colours[id];
+  await context.globalState.update(COLOUR_KEY, colours);
+
+  const pinned = context.globalState.get<string[]>(PINNED_KEY, []);
+  if (!pinned.includes(id)) return;
+  await context.globalState.update(
+    PINNED_KEY,
+    pinned.filter((pinnedId) => pinnedId !== id),
+  );
+};
+
+type DeleteWorktreeProps = {
+  context: vscode.ExtensionContext;
+  worktree: Worktree;
+  isCurrent: boolean;
+  gitCwd: string;
+  mainPath: string;
+};
+
+const deleteWorktree = async ({
+  context,
+  worktree,
+  isCurrent,
+  gitCwd,
+  mainPath,
+}: DeleteWorktreeProps) => {
+  if (worktree.isMain) {
+    vscode.window.showErrorMessage("Cannot delete the primary worktree.");
+    return;
+  }
+
+  const name = basename(worktree.path);
+  const confirmed = await vscode.window.showWarningMessage(
+    `Delete worktree "${name}"?`,
+    {
+      modal: true,
+      detail: `Removes ${worktree.path}\n\nThe branch "${worktree.branch}" is kept.`,
+    },
+    "Delete",
+  );
+  if (confirmed !== "Delete") return;
+
+  try {
+    await removeWorktreeAt({ path: worktree.path, gitCwd, force: false });
+  } catch (error) {
+    /* WHY: git refuses when the worktree holds modified OR untracked files. Forcing past that
+       destroys work, so show exactly what would be lost before offering it. */
+    const stderr = stderrOf(error);
+    if (!stderr.includes("modified or untracked")) {
+      vscode.window.showErrorMessage(`git worktree remove failed — ${stderr}`);
+      return;
+    }
+    const dirt = await describeDirt(worktree.path).catch(() => "(could not list changes)");
+    const forced = await vscode.window.showWarningMessage(
+      `"${name}" has uncommitted changes. Delete anyway and lose them?`,
+      { modal: true, detail: dirt },
+      "Delete anyway",
+    );
+    if (forced !== "Delete anyway") return;
+    try {
+      await removeWorktreeAt({ path: worktree.path, gitCwd, force: true });
+    } catch (forceError) {
+      vscode.window.showErrorMessage(`git worktree remove failed — ${stderrOf(forceError)}`);
+      return;
+    }
+  }
+
+  await forgetWorktree({ context, id: worktree.id });
+
+  if (!isCurrent) {
+    vscode.window.showInformationMessage(`Deleted worktree "${name}".`);
+    return;
+  }
+
+  /* WHY: the folder this window has open no longer exists — move to the primary worktree.
+     openFolder tears down the extension host, so nothing may follow it. */
+  vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(mainPath), {
+    forceReuseWindow: true,
+  });
+};
+
 type WorktreeItem = vscode.QuickPickItem & { worktree: Worktree };
 
 type ToItemProps = {
@@ -231,7 +343,10 @@ const toItem = ({ worktree, isPinned, isCurrent }: ToItemProps): WorktreeItem =>
   buttons: [
     ...(worktree.isMain
       ? []
-      : [{ iconPath: new vscode.ThemeIcon("edit"), tooltip: RENAME_TOOLTIP }]),
+      : [
+          { iconPath: new vscode.ThemeIcon("edit"), tooltip: RENAME_TOOLTIP },
+          { iconPath: new vscode.ThemeIcon("trash"), tooltip: DELETE_TOOLTIP },
+        ]),
     {
       iconPath: new vscode.ThemeIcon(isPinned ? "pinned" : "pin"),
       tooltip: isPinned ? "Unpin" : "Pin",
@@ -296,12 +411,26 @@ const showSwitcher = async ({ context, cwd, currentPath }: ShowSwitcherProps) =>
   picker.onDidTriggerItemButton(async ({ item, button }) => {
     if (!isWorktreeItem(item)) return;
 
+    const mainPath = worktrees.find((worktree) => worktree.isMain)?.path ?? cwd;
+
     if (button.tooltip === RENAME_TOOLTIP) {
       picker.dispose();
       await renameWorktree({
         worktree: item.worktree,
         isCurrent: item.worktree.path === currentPath,
-        gitCwd: worktrees.find((worktree) => worktree.isMain)?.path ?? cwd,
+        gitCwd: mainPath,
+      });
+      return;
+    }
+
+    if (button.tooltip === DELETE_TOOLTIP) {
+      picker.dispose();
+      await deleteWorktree({
+        context,
+        worktree: item.worktree,
+        isCurrent: item.worktree.path === currentPath,
+        gitCwd: mainPath,
+        mainPath,
       });
       return;
     }
@@ -355,6 +484,26 @@ export const activate = async (context: vscode.ExtensionContext) => {
         worktree: current,
         isCurrent: true,
         gitCwd: worktrees.find((worktree) => worktree.isMain)?.path ?? root,
+      });
+    }),
+    vscode.commands.registerCommand(DELETE_COMMAND, async () => {
+      if (!root) {
+        vscode.window.showWarningMessage("Worktree Manager: no folder open.");
+        return;
+      }
+      const worktrees = await listWorktrees(root).catch(() => []);
+      const current = worktrees.find((worktree) => worktree.path === root);
+      if (!current) {
+        vscode.window.showWarningMessage("Worktree Manager: this folder is not a git worktree.");
+        return;
+      }
+      const mainPath = worktrees.find((worktree) => worktree.isMain)?.path ?? root;
+      return deleteWorktree({
+        context,
+        worktree: current,
+        isCurrent: true,
+        gitCwd: mainPath,
+        mainPath,
       });
     }),
   );

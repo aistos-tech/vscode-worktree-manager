@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Worktree Manager",
   "description": "Per-worktree identity and fast switching for git worktrees",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -26,6 +26,10 @@
       {
         "command": "worktreeManager.rename",
         "title": "Worktree: Rename…"
+      },
+      {
+        "command": "worktreeManager.delete",
+        "title": "Worktree: Delete…"
       }
     ],
     "keybindings": [

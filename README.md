@@ -2,7 +2,7 @@
 
 Per-worktree identity and fast switching for git worktrees in VS Code.
 
-## What it does (v0)
+## What it does
 
 - **Status bar identity** — shows the current worktree's folder name in a colour derived from
   that name. Writes no settings file; `StatusBarItem.color` accepts a raw hex.
@@ -14,6 +14,12 @@ Per-worktree identity and fast switching for git worktrees in VS Code.
   `git worktree move`, then reopens the window if you renamed the one you're in. The VS Code
   title follows automatically, since the default `window.title` contains `${rootName}`.
   Pin and colour survive, because they key on the admin directory rather than the folder name.
+- **Delete** — `Worktree: Delete…`, or the trash button on any quick pick row. Runs
+  `git worktree remove` behind a modal confirmation; if the worktree holds modified **or
+  untracked** files git refuses, and a second modal lists exactly what would be lost before
+  offering `--force`. The branch is always kept. Deleting the worktree you're in reopens the
+  window at the primary worktree. Pin and colour entries are released, so the palette slot is
+  reusable.
 
 ## Deliberately not included
 

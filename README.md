@@ -8,6 +8,11 @@ Per-worktree identity and fast switching for git worktrees in VS Code.
   that name. Writes no settings file; `StatusBarItem.color` accepts a raw hex.
 - **Switcher** — `ctrl+shift+w` opens a quick pick of every worktree in the repo and opens the
   chosen one **in the same window**. Pinned worktrees sort first.
+- **Recency order** — within each group, worktrees are ordered by when they were last opened, most
+  recent first; one never opened falls back to its creation date, newest first. "Opened" is
+  recorded on activation, not on switch, so arriving via VS Code's recent list or `code <path>`
+  counts too. The creation date is the birth time of the git admin directory, which is why it
+  survives `git worktree move` — the worktree folder's own timestamps do not.
 - **Pins** — pin/unpin from the button on each quick pick row. Stored in `globalState`, keyed by
   the git admin directory name, which survives `git worktree move`.
 - **Rename** — `Worktree: Rename…`, or the pencil button on any quick pick row. Runs
@@ -34,9 +39,9 @@ on.
 newline format — verified to produce identical results. Any *other* git failure propagates and is
 surfaced, rather than being swallowed into an empty list.
 
-Pins and colours live in `globalState`, which is stored on the **local** machine and shared across
-remote hosts — but is partitioned per VS Code **profile**. Using a dedicated profile for remote
-work gives you a separate set of colours.
+Pins, colours and the last-opened stamps live in `globalState`, which is stored on the **local**
+machine and shared across remote hosts — but is partitioned per VS Code **profile**. Using a
+dedicated profile for remote work gives you a separate set of colours.
 
 ## Deliberately not included
 

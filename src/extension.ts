@@ -13,6 +13,7 @@ const RENAME_TOOLTIP = "Rename";
 const DELETE_TOOLTIP = "Delete";
 const PINNED_KEY = "pinnedWorktreeIds";
 const COLOUR_KEY = "worktreeColours";
+const OPENED_KEY = "worktreeLastOpened";
 const MAIN_WORKTREE_ID = "__main__";
 
 const PALETTE = [
@@ -39,19 +40,36 @@ type Worktree = {
   path: string;
   branch: string;
   isMain: boolean;
+  createdAt: number;
 };
 
 type ColourMap = Record<string, string>;
 
-/* WHY: the git admin dir name is assigned at creation and survives `git worktree move`,
-   so it is the only worktree identifier stable across a rename. */
-const resolveWorktreeId = (worktreePath: string) => {
+type OpenedMap = Record<string, number>;
+
+/* WHY: birthtime is unavailable on some filesystems, where Node reports 0 or the ctime — falling
+   back keeps the tiebreak meaningful instead of collapsing every worktree onto the epoch. */
+const birthOf = (adminDir: string) => {
+  if (!existsSync(adminDir)) return 0;
+  const stats = statSync(adminDir);
+  return stats.birthtimeMs || stats.ctimeMs;
+};
+
+/* WHY: the git admin dir is created with the worktree and survives `git worktree move`, so it
+   carries both the only rename-stable identifier (its name) and the only record of when the
+   worktree was created (its birth time). A `.git` directory, rather than a file, is the primary
+   worktree — its admin dir is the repo itself, born when the clone was. */
+const resolveIdentity = (worktreePath: string) => {
   const gitPath = join(worktreePath, ".git");
-  if (!existsSync(gitPath) || statSync(gitPath).isDirectory()) return MAIN_WORKTREE_ID;
+  if (!existsSync(gitPath)) return { id: MAIN_WORKTREE_ID, createdAt: 0 };
+  if (statSync(gitPath).isDirectory()) {
+    return { id: MAIN_WORKTREE_ID, createdAt: birthOf(gitPath) };
+  }
+
   const gitdir = readFileSync(gitPath, "utf8")
     .trim()
     .replace(/^gitdir:\s*/, "");
-  return basename(gitdir);
+  return { id: basename(gitdir), createdAt: birthOf(gitdir) };
 };
 
 const hashToIndex = (value: string) => {
@@ -104,6 +122,20 @@ const ensureColours = async ({ context, worktrees }: EnsureColoursProps) => {
   return assigned;
 };
 
+/* WHY: stamped on activation rather than on switch, because the switcher is not the only way into
+   a worktree — VS Code's recent list, `code <path>` and a reopened window all count as openings,
+   and every one of them activates the extension in the folder it landed in. */
+type RememberOpenedProps = {
+  context: vscode.ExtensionContext;
+  id: string;
+};
+
+const rememberOpened = async ({ context, id }: RememberOpenedProps) => {
+  const opened = { ...context.globalState.get<OpenedMap>(OPENED_KEY, {}) };
+  opened[id] = Date.now();
+  await context.globalState.update(OPENED_KEY, opened);
+};
+
 const stderrOf = (error: unknown) => {
   if (error instanceof Error && "stderr" in error) return String(error.stderr).trim();
   return error instanceof Error ? error.message : String(error);
@@ -117,13 +149,14 @@ const parseWorktree = (fields: string[]) => {
   if (!worktreePath) return undefined;
 
   const branchRef = present.find((field) => field.startsWith("branch "))?.slice("branch ".length);
-  const id = resolveWorktreeId(worktreePath);
+  const { id, createdAt } = resolveIdentity(worktreePath);
 
   return {
     id,
     path: worktreePath,
     branch: branchRef?.replace("refs/heads/", "") ?? "detached",
     isMain: id === MAIN_WORKTREE_ID,
+    createdAt,
   };
 };
 
@@ -285,6 +318,10 @@ const forgetWorktree = async ({ context, id }: ForgetProps) => {
   delete colours[id];
   await context.globalState.update(COLOUR_KEY, colours);
 
+  const opened = { ...context.globalState.get<OpenedMap>(OPENED_KEY, {}) };
+  delete opened[id];
+  await context.globalState.update(OPENED_KEY, opened);
+
   const pinned = context.globalState.get<string[]>(PINNED_KEY, []);
   if (!pinned.includes(id)) return;
   await context.globalState.update(
@@ -389,13 +426,20 @@ const toItem = ({ worktree, isPinned, isCurrent }: ToItemProps): WorktreeItem =>
   worktree,
 });
 
+/* WHY: most recently opened first, then newest created — the worktrees you are moving between rise
+   to the top, and one that has never been opened still lands near them while it is fresh, rather
+   than in whatever order git happened to list it. */
+const byRecency = (opened: OpenedMap) => (left: Worktree, right: Worktree) =>
+  (opened[right.id] ?? 0) - (opened[left.id] ?? 0) || right.createdAt - left.createdAt;
+
 type BuildItemsProps = {
   worktrees: Worktree[];
   pinned: string[];
+  opened: OpenedMap;
   currentPath: string | undefined;
 };
 
-const buildItems = ({ worktrees, pinned, currentPath }: BuildItemsProps) => {
+const buildItems = ({ worktrees, pinned, opened, currentPath }: BuildItemsProps) => {
   const toEntry = (worktree: Worktree) =>
     toItem({
       worktree,
@@ -403,8 +447,9 @@ const buildItems = ({ worktrees, pinned, currentPath }: BuildItemsProps) => {
       isCurrent: worktree.path === currentPath,
     });
 
-  const pinnedEntries = worktrees.filter((worktree) => pinned.includes(worktree.id)).map(toEntry);
-  const restEntries = worktrees.filter((worktree) => !pinned.includes(worktree.id)).map(toEntry);
+  const ordered = [...worktrees].sort(byRecency(opened));
+  const pinnedEntries = ordered.filter((worktree) => pinned.includes(worktree.id)).map(toEntry);
+  const restEntries = ordered.filter((worktree) => !pinned.includes(worktree.id)).map(toEntry);
 
   const separator = (label: string) => ({
     label,
@@ -438,6 +483,7 @@ const showSwitcher = async ({ context, cwd, currentPath }: ShowSwitcherProps) =>
     picker.items = buildItems({
       worktrees,
       pinned: context.globalState.get<string[]>(PINNED_KEY, []),
+      opened: context.globalState.get<OpenedMap>(OPENED_KEY, {}),
       currentPath,
     });
   };
@@ -549,6 +595,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
   const current = worktrees.find((worktree) => worktree.path === root);
   if (!current) return;
 
+  await rememberOpened({ context, id: current.id });
   const colours = await ensureColours({ context, worktrees });
   const item = vscode.window.createStatusBarItem(
     "worktreeManager.current",

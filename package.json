@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Worktree Manager",
   "description": "Per-worktree identity and fast switching for git worktrees",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",

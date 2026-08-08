@@ -13,6 +13,9 @@ export type Worktree = {
   branch: string;
   isMain: boolean;
   createdAt: number;
+  locked: boolean;
+  lockReason: string | undefined;
+  prunable: boolean;
 };
 
 /* WHY: birthtime is unavailable on some filesystems, where Node reports 0 or the ctime — falling
@@ -45,6 +48,24 @@ export const stderrOf = (error: unknown) => {
   return error instanceof Error ? error.message : String(error);
 };
 
+/* WHY: `locked` has two porcelain forms — bare, from a plain `git worktree lock`, and
+   `locked <reason>` when one was given. Both reproduced on git 2.50.1 in `--porcelain` and `-z`
+   alike. Copying this file's `startsWith("branch ")` idiom as `startsWith("locked ")` misses the
+   bare form, which is exactly what the common case produces, and the delete guard then silently
+   fails to fire on the worktrees it exists to protect. `prunable` is only ever emitted with a
+   reason, so it has no bare form — matching both anyway costs nothing and removes the need to
+   remember which is which. */
+export const hasAttribute = (fields: string[], name: string) =>
+  fields.some((field) => field === name || field.startsWith(`${name} `));
+
+export const attributeReason = (fields: string[], name: string) => {
+  const reason = fields
+    .find((field) => field.startsWith(`${name} `))
+    ?.slice(name.length + 1)
+    .trim();
+  return reason || undefined;
+};
+
 export const parseWorktree = (fields: string[]) => {
   const present = fields.filter(Boolean);
   const worktreePath = present
@@ -61,6 +82,9 @@ export const parseWorktree = (fields: string[]) => {
     branch: branchRef?.replace("refs/heads/", "") ?? "detached",
     isMain: id === MAIN_WORKTREE_ID,
     createdAt,
+    locked: hasAttribute(present, "locked"),
+    lockReason: attributeReason(present, "locked"),
+    prunable: hasAttribute(present, "prunable"),
   };
 };
 
@@ -89,6 +113,9 @@ export const isNotARepo = (error: unknown) => /not a git repository/i.test(stder
 
 export const moveWorktree = ({ from, to, gitCwd }: { from: string; to: string; gitCwd: string }) =>
   execFileAsync("git", ["worktree", "move", from, to], { cwd: gitCwd });
+
+export const pruneWorktrees = (gitCwd: string) =>
+  execFileAsync("git", ["worktree", "prune"], { cwd: gitCwd });
 
 export const removeWorktreeAt = ({
   path,

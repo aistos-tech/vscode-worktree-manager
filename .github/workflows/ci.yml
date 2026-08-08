@@ -27,6 +27,11 @@ jobs:
       - run: bun run lint
       - run: bun run typecheck
 
+      # The pure functions here (porcelain parsing, branch->identifier, the picker join) are
+      # deterministic and painful to re-check by hand across a 57-row manual table. bun test needs
+      # no runner dependency beyond @types/bun, which the typecheck above also consumes.
+      - run: bun test
+
       # Build last: it is the slowest step and the only one whose failure the first two cannot
       # already explain.
       - run: bun run build

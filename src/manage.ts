@@ -2,7 +2,14 @@ import { existsSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import * as vscode from "vscode";
 import { forgetWorktree } from "./state";
-import { describeDirt, moveWorktree, removeWorktreeAt, stderrOf, type Worktree } from "./worktree";
+import {
+  describeDirt,
+  moveWorktree,
+  pruneWorktrees,
+  removeWorktreeAt,
+  stderrOf,
+  type Worktree,
+} from "./worktree";
 
 type ValidateNameProps = {
   value: string;
@@ -90,6 +97,46 @@ export const deleteWorktree = async ({
   }
 
   const name = basename(worktree.path);
+
+  /* WHY: refuse before anything else. A locked worktree is one somebody deliberately marked as in
+     use; git would refuse the removal anyway, but only after the confirmation modal has already
+     been answered — and this flow is about to gain a teardown hook that must never run against a
+     worktree the removal will not go through on. */
+  if (worktree.locked) {
+    vscode.window.showErrorMessage(
+      `"${name}" is locked${worktree.lockReason ? ` — ${worktree.lockReason}` : ""}. ` +
+        "Unlock it with `git worktree unlock` if you really mean to remove it.",
+    );
+    return;
+  }
+
+  /* WHY: a prunable worktree's directory is already gone. There is nothing to check for
+     uncommitted changes and nothing for a teardown hook to run against, so the hard refusal used
+     for `locked` would only strand the row in the switcher with no in-editor way to clear it.
+     Clear the registration instead, and say plainly that whatever it was running outlives it. */
+  if (worktree.prunable) {
+    const cleared = await vscode.window.showWarningMessage(
+      `"${name}" is already gone from disk. Clear its registration?`,
+      {
+        modal: true,
+        detail:
+          `${worktree.path}\n\nOnly the git registration is removed. Anything the worktree was ` +
+          "running — containers, volumes — outlives it and has to be reclaimed separately.",
+      },
+      "Clear registration",
+    );
+    if (cleared !== "Clear registration") return;
+    try {
+      await pruneWorktrees(gitCwd);
+    } catch (error) {
+      vscode.window.showErrorMessage(`git worktree prune failed — ${stderrOf(error)}`);
+      return;
+    }
+    await forgetWorktree({ context, id: worktree.id });
+    vscode.window.showInformationMessage(`Cleared the registration for "${name}".`);
+    return;
+  }
+
   const confirmed = await vscode.window.showWarningMessage(
     `Delete worktree "${name}"?`,
     {

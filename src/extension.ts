@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { bootstrapWorktree } from "./bootstrap";
 import { resolveHook } from "./config";
 import { createWorktree } from "./create";
+import { signIn, signOut } from "./linear/auth";
 import {
   badgeFor,
   bindIssue,
@@ -32,6 +33,8 @@ const CREATE_COMMAND = "worktreeManager.create";
 const SHOW_WORKTREES_COMMAND = "worktreeManager.showWorktrees";
 const SHOW_LINEAR_COMMAND = "worktreeManager.showLinear";
 const SHOW_PRS_COMMAND = "worktreeManager.showPRs";
+const SIGN_IN_COMMAND = "worktreeManager.linear.signIn";
+const SIGN_OUT_COMMAND = "worktreeManager.linear.signOut";
 const OPEN_ISSUE_COMMAND = "worktreeManager.linear.openIssue";
 const BIND_ISSUE_COMMAND = "worktreeManager.linear.bindIssue";
 const FORGET_APPROVAL_COMMAND = "worktreeManager.hooks.forget";
@@ -450,6 +453,14 @@ export const activate = async (context: vscode.ExtensionContext) => {
         },
       ),
     ),
+    vscode.commands.registerCommand(SIGN_IN_COMMAND, async () => {
+      const token = await signIn(context);
+      if (token) vscode.window.showInformationMessage("Signed in to Linear.");
+    }),
+    vscode.commands.registerCommand(SIGN_OUT_COMMAND, async () => {
+      await signOut(context);
+      vscode.window.showInformationMessage("Signed out of Linear. Cached issue data was cleared.");
+    }),
     vscode.commands.registerCommand(CREATE_COMMAND, async () => {
       const cwd = requireRoot();
       if (!cwd) return;

@@ -187,6 +187,27 @@ data and needs no storage — it is simply never surfaced in the editor.
 A branch with no identifier degrades **in silence**, never with an error: the primary worktree
 normally has none, so that is the common case rather than an exception.
 
+### Signing in
+
+`Worktree: Sign in to Linear` takes a **personal API key** (linear.app → Settings → Security &
+access → Personal API keys). It is stored in `context.secrets`, never in `globalState` — the latter
+is plaintext in `state.vscdb`.
+
+⚠️ **`SecretStorage` does not sync across machines.** On a second machine Linear is simply
+unconfigured until you sign in there too. That is by design, and it will otherwise read as a bug.
+
+`Worktree: Sign out of Linear` deletes the key **and** every cache it filled, in one act. A
+credential revoked while the ticket bodies it fetched stay on disk is the failure that matters here:
+issue text in this workspace carries personal data.
+
+📌 **OAuth is still the intended default, and is not built yet.** It gives revocation and no
+long-lived credential at rest, which an API key does not. It is deferred because it rests on
+`https://vscode.dev/redirect` forwarding an https callback to a *third-party* `vscode://` URI
+handler — documented only for MCP server auth, with one hands-on report of it refusing a
+non-Microsoft target. That needs a real round trip to settle, not a code change. Everything reads
+its credential through one function, so OAuth drops in behind it without touching a caller. What
+must never happen is an embedded client secret: a `.vsix` is a zip anyone can open.
+
 ⚠️ **Set `teamKeys` if you want the badge to be trustworthy.** The identifier pattern matches any
 1–5 letters followed by a number, so a branch like `wip-2-something` or `fix-2-broken` produces a
 confident-looking `WIP-2` badge linking to an issue that does not exist. Listing the keys your

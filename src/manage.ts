@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import * as vscode from "vscode";
-import { resolveHook } from "./config";
+import { type ResolvedHook, resolveHook } from "./config";
 import { describeExit, runHook } from "./hooks";
+import { acquireWorktreeLock } from "./lock";
 import { forgetWorktree } from "./state";
 import { ensureApproved } from "./trust";
 import {
@@ -175,6 +176,53 @@ export const deleteWorktree = async ({
     if (anyway !== "Delete anyway") return;
   }
 
+  /* Taken only once the user has committed to the delete, so a second window is not blocked while
+     the first sits on a modal. From here the sequence is destructive and must not interleave. */
+  const lock = acquireWorktreeLock({
+    primaryPath: mainPath,
+    id: worktree.id,
+    operation: `delete ${name}`,
+  });
+  if (!lock.acquired) {
+    vscode.window.showErrorMessage(
+      `Another window is already running "${lock.heldBy}" on "${name}". Wait for it to finish.`,
+    );
+    return;
+  }
+
+  try {
+    await runDelete({
+      context,
+      worktree,
+      isCurrent,
+      gitCwd,
+      mainPath,
+      hook,
+      dirt,
+      name,
+    });
+  } finally {
+    lock.release();
+  }
+};
+
+type RunDeleteProps = DeleteWorktreeProps & {
+  hook: ResolvedHook;
+  dirt: string;
+  name: string;
+};
+
+/* The destructive half, split out so the lock above is a plain try/finally around one call. */
+const runDelete = async ({
+  context,
+  worktree,
+  isCurrent,
+  gitCwd,
+  mainPath,
+  hook,
+  dirt,
+  name,
+}: RunDeleteProps) => {
   if (hook.command) {
     const approved = await ensureApproved({
       context,

@@ -2,6 +2,7 @@ import { basename } from "node:path";
 import * as vscode from "vscode";
 import { resolveHook } from "./config";
 import { describeExit, type HookEnv, runHook } from "./hooks";
+import { acquireWorktreeLock } from "./lock";
 import { ensureApproved } from "./trust";
 import type { Worktree } from "./worktree";
 
@@ -85,6 +86,20 @@ export const bootstrapWorktree = async ({ context, worktree, primaryPath }: Boot
   });
   if (!approved) return;
 
+  /* Two `$(sync)` clicks in two windows would otherwise run concurrent `bun install` in one
+     node_modules, and a bootstrap racing a delete is worse still. */
+  const lock = acquireWorktreeLock({
+    primaryPath,
+    id: worktree.id,
+    operation: `bootstrap ${name}`,
+  });
+  if (!lock.acquired) {
+    vscode.window.showErrorMessage(
+      `Another window is already running "${lock.heldBy}" on "${name}". Wait for it to finish.`,
+    );
+    return;
+  }
+
   const exitCode = await runHook({
     command: hook.command,
     cwd: primaryPath,
@@ -95,7 +110,7 @@ export const bootstrapWorktree = async ({ context, worktree, primaryPath }: Boot
       WORKTREE_PURPOSE: purpose,
     },
     name: `bootstrap ${name}`,
-  });
+  }).finally(() => lock.release());
 
   /* Reports BOTH outcomes. The task panel is opened with focus:false, so a silent failure here
      would be invisible — after the hook has already rewritten .env and possibly reset a database. */

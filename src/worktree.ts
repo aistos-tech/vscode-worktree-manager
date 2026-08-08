@@ -138,3 +138,55 @@ export const describeDirt = async (worktreePath: string) => {
   const shown = lines.slice(0, 10).join("\n");
   return lines.length > 10 ? `${shown}\n… and ${lines.length - 10} more` : shown;
 };
+
+export const branchExistsAnywhere = async (branch: string, gitCwd: string) => {
+  const verify = async (ref: string) => {
+    try {
+      await execFileAsync("git", ["show-ref", "--verify", "--quiet", ref], { cwd: gitCwd });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (await verify(`refs/heads/${branch}`)) return "local" as const;
+  if (await verify(`refs/remotes/origin/${branch}`)) return "remote" as const;
+  return undefined;
+};
+
+export const listBranches = async (gitCwd: string) => {
+  const { stdout } = await execFileAsync(
+    "git",
+    ["for-each-ref", "--sort=-committerdate", "refs/heads", "--format=%(refname:short)"],
+    { cwd: gitCwd },
+  );
+  return stdout.split("\n").filter(Boolean);
+};
+
+export const currentBranch = async (gitCwd: string) => {
+  const { stdout } = await execFileAsync("git", ["branch", "--show-current"], { cwd: gitCwd });
+  return stdout.trim();
+};
+
+/* The branch is the commit-ish and is NEVER omitted. `git worktree add <dest>` with no reference
+   DWIMs a NEW branch from the dest basename — reproduced on git 2.50.1: with
+   `thblt-thlgn/acme-42-import` existing and dest `worktrees/acme-42-import`, git
+   printed "Preparing worktree (new branch 'acme-42-import')" and left the intended branch
+   untouched. Namespaced branches are the normal case here, not an edge. */
+export const addWorktree = ({
+  dest,
+  branch,
+  source,
+  gitCwd,
+}: {
+  dest: string;
+  branch: string;
+  source: string | undefined;
+  gitCwd: string;
+}) =>
+  execFileAsync(
+    "git",
+    source === undefined
+      ? ["worktree", "add", dest, branch]
+      : ["worktree", "add", "-b", branch, dest, source],
+    { cwd: gitCwd },
+  );

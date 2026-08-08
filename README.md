@@ -26,6 +26,11 @@ Per-worktree identity and fast switching for git worktrees in VS Code.
   nothing left to tear down. Uncommitted changes are listed and consented to *before* the hook
   runs, not after git refuses. The branch is always kept. Deleting the worktree you're in reopens
   the window at the primary worktree. Pin and colour entries are released.
+- **Create** — `Worktree: Create…`, or the `$(add)` row in the switcher. Prompts for a branch, a
+  source to fork from (skipped when the branch already exists), and a destination, then runs the
+  repo's `postCreate` hook and offers **Open** / **Open in New Window** / **Stay**. The create row's
+  label embeds whatever you typed, so it stays visible while the list filters — a static row is
+  hidden exactly when you want it.
 - **Per-repo hooks** — a repo can bind a command to run after a worktree is created and before one
   is deleted. See below.
 - **Hook approvals** — `Worktree: List Hook Approvals` shows what you have approved;
@@ -99,6 +104,21 @@ with the parent environment — it cannot subtract — so `GITHUB_TOKEN`, `ANTHR
 mitigation the API affords. A repo that wants isolation writes `env -i PATH="$PATH" …` into its own
 command string, re-exporting by name; the extension cannot enforce that, because the command
 belongs to the repo.
+
+### Creating
+
+| Step | Behaviour |
+|---|---|
+| Branch | Existing branch → checkout mode. New name → create mode, and you pick a source. |
+| Already checked out | Refused up front, naming the worktree that holds it. |
+| Destination | Defaults to `<worktreesRoot>/<branch basename>`. An existing path is rejected in the input box. |
+| `postCreate` | Runs before the open prompt. A failure keeps the worktree and points at `Worktree: Bootstrap…`. |
+
+⚠️ **A non-zero `git worktree add` does not mean nothing happened.** If the repo's `post-checkout`
+hook fails, git exits 1 *having already created and registered the worktree* — and a fresh worktree
+has no `node_modules`, so a repo whose hooks assert their own installation hits this routinely.
+Rather than reporting the error and leaving an orphan you were never told about, the extension
+re-reads `git worktree list` and offers **Continue anyway** or **Roll back**.
 
 ### The CLIs remain
 

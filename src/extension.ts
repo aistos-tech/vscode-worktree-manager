@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 import * as vscode from "vscode";
+import { createWorktree } from "./create";
 import { deleteWorktree, renameWorktree } from "./manage";
 import {
   ensureColours,
@@ -16,6 +17,7 @@ import { isNotARepo, listWorktrees, stderrOf, type Worktree } from "./worktree";
 const SWITCH_COMMAND = "worktreeManager.switch";
 const RENAME_COMMAND = "worktreeManager.rename";
 const DELETE_COMMAND = "worktreeManager.delete";
+const CREATE_COMMAND = "worktreeManager.create";
 const FORGET_APPROVAL_COMMAND = "worktreeManager.hooks.forget";
 const LIST_APPROVALS_COMMAND = "worktreeManager.hooks.listApprovals";
 const RENAME_TOOLTIP = "Rename";
@@ -121,6 +123,20 @@ const buildItems = ({ worktrees, pinned, opened, currentPath }: BuildItemsProps)
 
 const isWorktreeItem = (item: vscode.QuickPickItem): item is WorktreeItem => "worktree" in item;
 
+type CreateItem = vscode.QuickPickItem & { create: true };
+
+const isCreateItem = (item: vscode.QuickPickItem): item is CreateItem => "create" in item;
+
+/* The label embeds the typed text verbatim, which is what keeps the row visible while filtering:
+   fuzzy matching needs the query's characters in order, and they are literally present. A static
+   "New worktree…" row is hidden by the filter at exactly the moment it is wanted — you type a
+   branch name that matches no existing worktree, and the one row that could act on it disappears. */
+const createItem = (query: string): CreateItem => ({
+  label: query ? `$(add) Create worktree "${query}"` : "$(add) New worktree…",
+  alwaysShow: true,
+  create: true,
+});
+
 type ShowSwitcherProps = {
   context: vscode.ExtensionContext;
   cwd: string;
@@ -137,14 +153,26 @@ const showSwitcher = async ({ context, cwd, currentPath }: ShowSwitcherProps) =>
   picker.matchOnDescription = true;
 
   const refresh = () => {
-    picker.items = buildItems({
-      worktrees,
-      pinned: readPinned(context),
-      opened: readOpened(context),
-      currentPath,
-    });
+    /* Reassigning items resets activeItems to the first row, so capture and restore it — otherwise
+       the highlight jumps home on every keystroke, which is the defect the create row introduces
+       by needing to be rebuilt as the query changes. Restored by INSTANCE: matching is by object
+       identity, so a fresh object with an identical label does not restore the highlight. */
+    const active = picker.activeItems;
+    picker.items = [
+      ...buildItems({
+        worktrees,
+        pinned: readPinned(context),
+        opened: readOpened(context),
+        currentPath,
+      }),
+      createItem(picker.value.trim()),
+    ];
+    const restored = picker.items.filter((item) => active.includes(item));
+    if (restored.length) picker.activeItems = restored;
   };
   refresh();
+
+  picker.onDidChangeValue(() => refresh());
 
   picker.onDidTriggerItemButton(async ({ item, button }) => {
     if (!isWorktreeItem(item)) return;
@@ -181,7 +209,19 @@ const showSwitcher = async ({ context, cwd, currentPath }: ShowSwitcherProps) =>
      nothing after it runs, so dispose before handing over. */
   picker.onDidAccept(() => {
     const [selected] = picker.selectedItems;
-    if (!selected || !isWorktreeItem(selected)) return;
+    if (!selected) return;
+    if (isCreateItem(selected)) {
+      const seed = picker.value.trim();
+      picker.dispose();
+      void createWorktree({
+        context,
+        gitCwd: worktrees.find((worktree) => worktree.isMain)?.path ?? cwd,
+        worktrees,
+        branchSeed: seed || undefined,
+      });
+      return;
+    }
+    if (!isWorktreeItem(selected)) return;
     picker.dispose();
     vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(selected.worktree.path), {
       forceReuseWindow: true,
@@ -246,6 +286,16 @@ export const activate = async (context: vscode.ExtensionContext) => {
     /* Revocation needs enumeration beside it: a trust store the user cannot list is one they
        cannot audit after a prompt they did not expect. A QuickPick over the stored keys gives both
        from one command. */
+    vscode.commands.registerCommand(CREATE_COMMAND, async () => {
+      const cwd = requireRoot();
+      if (!cwd) return;
+      const worktrees = await loadWorktrees({ cwd, announce: true });
+      return createWorktree({
+        context,
+        gitCwd: worktrees.find((worktree) => worktree.isMain)?.path ?? cwd,
+        worktrees,
+      });
+    }),
     vscode.commands.registerCommand(FORGET_APPROVAL_COMMAND, async () => {
       const approvals = listApprovals(context);
       if (approvals.length === 0) {

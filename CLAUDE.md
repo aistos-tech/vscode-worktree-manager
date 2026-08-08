@@ -23,10 +23,16 @@ and one would drift.
 
 One fact has no home there, because it is invisible to a user:
 
-- **`engines.vscode` and `@types/vscode` move together** — both `^1.104.0` today. The types package
-  is the compile-time shape of the API; `engines` is the runtime floor. Bumping types alone compiles
-  against an API the declared minimum does not have, and it fails on a user's machine rather than in
-  CI, which typechecks against the same wrong pair.
+- **`engines.vscode` and `@types/vscode` move together** — `^1.109.0` and an **exact** `1.109.0`
+  today. The types package is the compile-time shape of the API; `engines` is the runtime floor.
+  Bumping types alone compiles against an API the declared minimum does not have, and it fails on a
+  user's machine rather than in CI, which typechecks against the same wrong pair.
+
+  The devDependency is pinned without a caret, and that is deliberate: `^1.104.0` had silently
+  resolved to **1.125.0**, so twenty-one versions of API were compiling cleanly against a declared
+  floor that did not have them. An exact pin makes the compiler enforce the floor instead of merely
+  documenting it, and the committed `bun.lock` plus CI's `--frozen-lockfile` is the second
+  enforcement point. Raise both together, in one commit, or not at all.
 
 ## Changing what the extension offers
 

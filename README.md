@@ -164,6 +164,17 @@ normally has none, so that is the common case rather than an exception.
 confident-looking `WIP-2` badge linking to an issue that does not exist. Listing the keys your
 workspace actually issues is what rejects those. Without it the match stays permissive.
 
+## Requirements
+
+**VS Code 1.109 or newer.** The `.vsix` refuses to install below it rather than installing and
+throwing later, which is the honest failure — but it does mean a teammate on an older build is
+excluded outright, not merely stale.
+
+`@types/vscode` is pinned to the **exact** engine version, with no caret. A caret had silently
+resolved 1.104 → 1.125, so post-floor APIs typechecked cleanly and would have thrown at runtime on
+the version the manifest claimed to support. The pin makes the compiler enforce the floor; the
+committed `bun.lock` and CI's `--frozen-lockfile` keep a local install from drifting away from it.
+
 ## Remote-SSH
 
 Works unmodified. The manifest pins `extensionKind: ["workspace"]`, so it runs on the remote host

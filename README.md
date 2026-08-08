@@ -159,6 +159,18 @@ dedicated profile for remote work gives you a separate set of colours.
 
 ## Deliberately not included
 
+**Reading `tasks.json` instead of a settings string.** `${input:}` cannot be filled
+programmatically, so the clicked row's path could never reach the task.
+
+**A git `post-checkout` hook instead of an extension hook.** It would cover the CLI, this extension,
+GitLens and the GitHub PR extension's worktree checkout all at once, which is genuinely better — and
+it does not work here. A fresh worktree has no `node_modules`, therefore no hook-runner binary, and
+a repo configured to *assert* its hook runner aborts rather than skipping.
+
+**Subtracting variables from the hook's environment.** `ShellExecutionOptions.env` is merged with
+the parent environment and cannot remove anything, so a "minimal env" would compile, read like a
+mitigation, and do nothing. See the Trust section.
+
 **Title bar colouring.** There is no API to colour a VS Code window — it can only be done by
 persisting `workbench.colorCustomizations` to a settings file. Worse, with
 `workbench.experimental.modernUI` enabled, VS Code ships
@@ -189,6 +201,31 @@ tears down the extension host **and** the debug session mid-call.
 
 Dropping a folder into `~/.vscode/extensions/` has not worked since VS Code 1.75, despite what
 the docs say — the registry `extensions.json` is authoritative.
+
+### Updating and rolling back
+
+There is no marketplace listing and therefore **no auto-update and no version pinning**. Updating is
+re-running *Install Extension from Location…*; rolling back is checking out the older commit and
+doing the same. Keep that in mind before relying on a behaviour that landed recently.
+
+⚠️ **A teammate on an older build is not merely stale.** Once a repo binds `preDelete` in its
+tracked `.vscode/settings.json`, everyone on that repo gets the setting — but only people who have
+installed *this* extension get the hook. Anyone on an older build keeps running a bare
+`git worktree remove` and orphans a stack per delete, with no signal that anything went wrong.
+The setting cannot warn them, because the code that reads it is the code they do not have.
+
+## Recovering by hand
+
+The repo's own CLIs remain the primary interface for scripted use, and they are the fallback when
+the editor path fails:
+
+| Situation | Recovery |
+|---|---|
+| Create succeeded, hook failed | `Worktree: Bootstrap…`, or the repo's attach/bootstrap script |
+| Delete aborted after teardown ran | `Worktree: Bootstrap…` to rebuild the stack, or delete it again |
+| Worktree made outside the editor | `Worktree: Bootstrap…` — this is what it is for |
+| Stack orphaned by a bare `git worktree remove` | the repo's orphan-reclaim command |
+| Hook prompts you unexpectedly | `Worktree: List Hook Approvals` to see what is stored |
 
 ## Package
 

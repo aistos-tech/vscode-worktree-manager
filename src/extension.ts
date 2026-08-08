@@ -10,11 +10,14 @@ import {
   rememberOpened,
   togglePinned,
 } from "./state";
+import { forgetApproval, listApprovals } from "./trust";
 import { isNotARepo, listWorktrees, stderrOf, type Worktree } from "./worktree";
 
 const SWITCH_COMMAND = "worktreeManager.switch";
 const RENAME_COMMAND = "worktreeManager.rename";
 const DELETE_COMMAND = "worktreeManager.delete";
+const FORGET_APPROVAL_COMMAND = "worktreeManager.hooks.forget";
+const LIST_APPROVALS_COMMAND = "worktreeManager.hooks.listApprovals";
 const RENAME_TOOLTIP = "Rename";
 const DELETE_TOOLTIP = "Delete";
 
@@ -238,6 +241,40 @@ export const activate = async (context: vscode.ExtensionContext) => {
         worktree: resolved.current,
         isCurrent: true,
         gitCwd: resolved.mainPath,
+      });
+    }),
+    /* Revocation needs enumeration beside it: a trust store the user cannot list is one they
+       cannot audit after a prompt they did not expect. A QuickPick over the stored keys gives both
+       from one command. */
+    vscode.commands.registerCommand(FORGET_APPROVAL_COMMAND, async () => {
+      const approvals = listApprovals(context);
+      if (approvals.length === 0) {
+        vscode.window.showInformationMessage("Worktree Manager: no hook approvals are stored.");
+        return;
+      }
+      const picked = await vscode.window.showQuickPick(
+        approvals.map((entry) => ({
+          label: `$(trash) ${entry.path}`,
+          description: entry.approval?.command,
+          detail: entry.approval?.origin,
+          path: entry.path,
+        })),
+        { title: "Forget which hook approval?", placeHolder: "The hook is re-approved next run" },
+      );
+      if (!picked) return;
+      await forgetApproval(context, picked.path);
+      vscode.window.showInformationMessage(`Forgot the hook approval for ${picked.path}.`);
+    }),
+    vscode.commands.registerCommand(LIST_APPROVALS_COMMAND, () => {
+      const approvals = listApprovals(context);
+      if (approvals.length === 0) {
+        vscode.window.showInformationMessage("Worktree Manager: no hook approvals are stored.");
+        return;
+      }
+      const lines = approvals.map((entry) => `${entry.path}\n  ${entry.approval?.command ?? "?"}`);
+      vscode.window.showInformationMessage(`${approvals.length} approved repo(s)`, {
+        modal: true,
+        detail: lines.join("\n\n"),
       });
     }),
     vscode.commands.registerCommand(DELETE_COMMAND, async () => {

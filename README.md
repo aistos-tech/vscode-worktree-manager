@@ -19,12 +19,92 @@ Per-worktree identity and fast switching for git worktrees in VS Code.
   `git worktree move`, then reopens the window if you renamed the one you're in. The VS Code
   title follows automatically, since the default `window.title` contains `${rootName}`.
   Pin and colour survive, because they key on the admin directory rather than the folder name.
-- **Delete** — `Worktree: Delete…`, or the trash button on any quick pick row. Runs
-  `git worktree remove` behind a modal confirmation; if the worktree holds modified **or
-  untracked** files git refuses, and a second modal lists exactly what would be lost before
-  offering `--force`. The branch is always kept. Deleting the worktree you're in reopens the
-  window at the primary worktree. Pin and colour entries are released, so the palette slot is
-  reusable.
+- **Delete** — `Worktree: Delete…`, or the trash button on any quick pick row. Runs the repo's
+  `preDelete` hook if it has one, then `git worktree remove`, behind a modal confirmation that
+  names the hook command. A **locked** worktree is refused before anything runs. A **prunable**
+  one — directory already gone — offers to clear its git registration instead, since there is
+  nothing left to tear down. Uncommitted changes are listed and consented to *before* the hook
+  runs, not after git refuses. The branch is always kept. Deleting the worktree you're in reopens
+  the window at the primary worktree. Pin and colour entries are released.
+- **Per-repo hooks** — a repo can bind a command to run after a worktree is created and before one
+  is deleted. See below.
+- **Hook approvals** — `Worktree: List Hook Approvals` shows what you have approved;
+  `Worktree: Forget Hook Approval…` revokes one.
+
+## Per-repo hooks
+
+The extension owns the *flow* — prompt, `git worktree add`, open. The repo owns the *bootstrap* —
+env files, ports, containers, install/build. A repo binds two commands in its **tracked**
+`.vscode/settings.json`, so they travel with the repo:
+
+```json
+{
+  "worktreeManager.hooks.postCreate": "bun run worktree-hook post-create --apply",
+  "worktreeManager.hooks.preDelete": "bun run worktree-hook pre-delete --apply"
+}
+```
+
+| Setting | Effect |
+|---|---|
+| `worktreeManager.hooks.postCreate` | Runs after a worktree is created. Empty disables it. |
+| `worktreeManager.hooks.preDelete` | Runs **before** deletion. **Non-zero aborts the delete.** Empty disables it. |
+| `worktreeManager.worktreesRoot` | Where new worktrees go. Empty → `<parent of primary>/worktrees`. |
+
+All three are **`window`** scope. `machine` scope cannot be set from `.vscode/settings.json`, which
+is the entire point of binding per repo.
+
+### The env contract
+
+The hook is run from the **primary** worktree, and receives:
+
+| Variable | Value |
+|---|---|
+| `WORKTREE_PATH` | Absolute path of the worktree being created or deleted |
+| `WORKTREE_BRANCH` | Its branch |
+| `WORKTREE_SOURCE` | The branch it was forked from, on create |
+| `WORKTREE_PURPOSE` | `work` or `review` |
+
+Context arrives as environment variables, never substituted into the command string. Branch names
+come from free text and git forbids none of `` ` ``, `$`, `(`, `)`, `;`, `"` — interpolating them
+into a shell line is a quoting bug waiting to happen.
+
+### Why a non-zero exit aborts the delete
+
+Because a failed teardown has to be able to stop the removal. If the stack will not come down, the
+worktree must survive so you can retry; deleting first and discovering that second leaves nothing
+to retry against. The hook runs as a programmatic `vscode.Task`, which yields a real exit code with
+no dependency on shell integration. **A task that never reports an exit code is treated as a
+failure** — the opposite would make a broken hook look like a successful teardown.
+
+⚠️ Hooks run in VS Code's **automation profile**, not your interactive shell. `bun: command not
+found` (exit 127) is the classic symptom.
+
+### Trust
+
+A hook is a shell command that a repo — and therefore a *branch* — controls. `gh pr checkout`
+carries that branch's `.vscode/settings.json` into a folder you already trust, so Workspace Trust
+does not cover this: it is granted once per parent folder, and every worktree already lives under
+one you approved.
+
+So the first run in a repo asks. The approval records the command, the folder it was resolved from,
+the repo's `origin`, and a digest of the tracked `scripts/` tree. Any of those changing re-asks.
+
+⚠️ **Approving a hook approves the repo's whole script tree at that commit**, not just the command
+string. A branch that leaves the settings byte-identical and rewrites the script it calls is why
+the tree digest is part of the key.
+
+⚠️ **The hook inherits the extension host's environment.** `ShellExecutionOptions.env` is *merged*
+with the parent environment — it cannot subtract — so `GITHUB_TOKEN`, `ANTHROPIC_API_KEY` and
+`DATABASE_URL` reach the hook if they reached VS Code. The trust approval is the only real
+mitigation the API affords. A repo that wants isolation writes `env -i PATH="$PATH" …` into its own
+command string, re-exporting by name; the extension cannot enforce that, because the command
+belongs to the repo.
+
+### The CLIs remain
+
+Agent tooling creates worktrees outside the editor, and the extension cannot hook
+`git worktree add` typed into a terminal. The repo's own scripts stay the primary interface for
+scripted use.
 
 ## Remote-SSH
 

@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Worktree Manager",
   "description": "Per-worktree identity and fast switching for git worktrees",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -31,10 +31,52 @@
     "onStartupFinished"
   ],
   "contributes": {
+    "configuration": {
+      "title": "Worktree Manager",
+      "properties": {
+        "worktreeManager.hooks.postCreate": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "markdownDescription": "Shell command run after a worktree is created, from the primary worktree. Receives `WORKTREE_PATH`, `WORKTREE_BRANCH`, `WORKTREE_SOURCE` and `WORKTREE_PURPOSE` in its environment. Empty disables it. Set this in the repo's `.vscode/settings.json` so it travels with the repo."
+        },
+        "worktreeManager.hooks.preDelete": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "markdownDescription": "Shell command run **before** a worktree is deleted, from the primary worktree. A non-zero exit aborts the deletion, so a failed teardown cannot leave the worktree removed and its stack running. Empty disables it."
+        },
+        "worktreeManager.worktreesRoot": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "markdownDescription": "Where new worktrees are created. Empty resolves to `<parent of the primary worktree>/worktrees`."
+        }
+      }
+    },
+    "taskDefinitions": [
+      {
+        "type": "worktreeManager.hook",
+        "properties": {
+          "nonce": {
+            "type": "string",
+            "description": "Identifies one hook run, so its exit code can be matched back."
+          }
+        }
+      }
+    ],
     "commands": [
       {
         "command": "worktreeManager.switch",
         "title": "Worktree: Switch…"
+      },
+      {
+        "command": "worktreeManager.hooks.forget",
+        "title": "Worktree: Forget Hook Approval…"
+      },
+      {
+        "command": "worktreeManager.hooks.listApprovals",
+        "title": "Worktree: List Hook Approvals"
       },
       {
         "command": "worktreeManager.rename",

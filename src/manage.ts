@@ -1,7 +1,10 @@
 import { existsSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import * as vscode from "vscode";
+import { resolveHook } from "./config";
+import { describeExit, runHook } from "./hooks";
 import { forgetWorktree } from "./state";
+import { ensureApproved } from "./trust";
 import {
   describeDirt,
   moveWorktree,
@@ -76,6 +79,10 @@ export const renameWorktree = async ({ worktree, isCurrent, gitCwd }: RenameWork
   });
 };
 
+const TEARDOWN_CONSEQUENCE =
+  "On this repo the pre-delete hook tears down the worktree's containers AND their named volumes. " +
+  "That is not recoverable from git.";
+
 type DeleteWorktreeProps = {
   context: vscode.ExtensionContext;
   worktree: Worktree;
@@ -137,33 +144,90 @@ export const deleteWorktree = async ({
     return;
   }
 
+  const hook = resolveHook({ hook: "preDelete", primaryPath: mainPath });
+
   const confirmed = await vscode.window.showWarningMessage(
     `Delete worktree "${name}"?`,
     {
       modal: true,
-      detail: `Removes ${worktree.path}\n\nThe branch "${worktree.branch}" is kept.`,
+      detail:
+        `Removes ${worktree.path}\n\nThe branch "${worktree.branch}" is kept.` +
+        (hook.command
+          ? `\n\nFirst runs this repo's pre-delete hook:\n${hook.command}\n\n${TEARDOWN_CONSEQUENCE}`
+          : ""),
     },
     "Delete",
   );
   if (confirmed !== "Delete") return;
 
-  try {
-    await removeWorktreeAt({ path: worktree.path, gitCwd, force: false });
-  } catch (error) {
-    /* WHY: git refuses when the worktree holds modified OR untracked files. Forcing past that
-       destroys work, so show exactly what would be lost before offering it. */
-    const stderr = stderrOf(error);
-    if (!stderr.includes("modified or untracked")) {
-      vscode.window.showErrorMessage(`git worktree remove failed — ${stderr}`);
-      return;
-    }
-    const dirt = await describeDirt(worktree.path).catch(() => "(could not list changes)");
-    const forced = await vscode.window.showWarningMessage(
+  /* Dirty check BEFORE the hook, not after git refuses. With teardown in the middle, reacting to
+     git's refusal means the stack is already gone by the time the user declines the force prompt —
+     destroyed containers and volumes, and the worktree still there. This does not eliminate the
+     partial-destruction window; it narrows it from a deliberate user action to a residual where git
+     refuses for a reason neither this check nor the locked/prunable guards predicted. */
+  const dirt = await describeDirt(worktree.path).catch(() => "");
+  if (dirt) {
+    const anyway = await vscode.window.showWarningMessage(
       `"${name}" has uncommitted changes. Delete anyway and lose them?`,
       { modal: true, detail: dirt },
       "Delete anyway",
     );
-    if (forced !== "Delete anyway") return;
+    if (anyway !== "Delete anyway") return;
+  }
+
+  if (hook.command) {
+    const approved = await ensureApproved({
+      context,
+      primaryPath: mainPath,
+      command: hook.command,
+      source: hook.source,
+      consequence: TEARDOWN_CONSEQUENCE,
+    });
+    /* A declined hook ABORTS the delete. It is not the same as "this repo has no hook": proceeding
+       would remove the worktree with its stack still running, which is the leak this whole path
+       exists to close, reachable by the safest-looking button in the flow. */
+    if (!approved) {
+      vscode.window.showInformationMessage(
+        `Delete cancelled — the pre-delete hook was not approved, and "${name}" would have been removed with its stack still running.`,
+      );
+      return;
+    }
+
+    const exitCode = await runHook({
+      command: hook.command,
+      cwd: mainPath,
+      env: {
+        WORKTREE_PATH: worktree.path,
+        WORKTREE_BRANCH: worktree.branch,
+        WORKTREE_SOURCE: "",
+        WORKTREE_PURPOSE: "work",
+      },
+      name: `preDelete ${name}`,
+    });
+    if (exitCode !== 0) {
+      vscode.window.showErrorMessage(
+        `Pre-delete hook failed (${describeExit(exitCode)}) — "${name}" was NOT deleted. Check the "worktree" task panel, then retry or tear the stack down by hand.`,
+      );
+      return;
+    }
+  }
+
+  try {
+    await removeWorktreeAt({ path: worktree.path, gitCwd, force: false });
+  } catch (error) {
+    /* The dirty case was already consented to above, so force through it here rather than asking a
+       second time. Any OTHER refusal is the residual window: the hook has already run, so the
+       stack is down and the worktree is still here. Say so, and point at the recovery path. */
+    const stderr = stderrOf(error);
+    if (!stderr.includes("modified or untracked") || !dirt) {
+      vscode.window.showErrorMessage(
+        `git worktree remove failed — ${stderr}` +
+          (hook.command
+            ? `\n\nThe pre-delete hook already ran, so "${name}" may now have a torn-down stack. Re-create it with the bootstrap command, or remove it by hand.`
+            : ""),
+      );
+      return;
+    }
     try {
       await removeWorktreeAt({ path: worktree.path, gitCwd, force: true });
     } catch (forceError) {

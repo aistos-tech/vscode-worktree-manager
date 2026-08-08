@@ -1,0 +1,113 @@
+import { execFile } from "node:child_process";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { basename, join } from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+
+export const MAIN_WORKTREE_ID = "__main__";
+
+export type Worktree = {
+  id: string;
+  path: string;
+  branch: string;
+  isMain: boolean;
+  createdAt: number;
+};
+
+/* WHY: birthtime is unavailable on some filesystems, where Node reports 0 or the ctime — falling
+   back keeps the tiebreak meaningful instead of collapsing every worktree onto the epoch. */
+const birthOf = (adminDir: string) => {
+  if (!existsSync(adminDir)) return 0;
+  const stats = statSync(adminDir);
+  return stats.birthtimeMs || stats.ctimeMs;
+};
+
+/* WHY: the git admin dir is created with the worktree and survives `git worktree move`, so it
+   carries both the only rename-stable identifier (its name) and the only record of when the
+   worktree was created (its birth time). A `.git` directory, rather than a file, is the primary
+   worktree — its admin dir is the repo itself, born when the clone was. */
+export const resolveIdentity = (worktreePath: string) => {
+  const gitPath = join(worktreePath, ".git");
+  if (!existsSync(gitPath)) return { id: MAIN_WORKTREE_ID, createdAt: 0 };
+  if (statSync(gitPath).isDirectory()) {
+    return { id: MAIN_WORKTREE_ID, createdAt: birthOf(gitPath) };
+  }
+
+  const gitdir = readFileSync(gitPath, "utf8")
+    .trim()
+    .replace(/^gitdir:\s*/, "");
+  return { id: basename(gitdir), createdAt: birthOf(gitdir) };
+};
+
+export const stderrOf = (error: unknown) => {
+  if (error instanceof Error && "stderr" in error) return String(error.stderr).trim();
+  return error instanceof Error ? error.message : String(error);
+};
+
+export const parseWorktree = (fields: string[]) => {
+  const present = fields.filter(Boolean);
+  const worktreePath = present
+    .find((field) => field.startsWith("worktree "))
+    ?.slice("worktree ".length);
+  if (!worktreePath) return undefined;
+
+  const branchRef = present.find((field) => field.startsWith("branch "))?.slice("branch ".length);
+  const { id, createdAt } = resolveIdentity(worktreePath);
+
+  return {
+    id,
+    path: worktreePath,
+    branch: branchRef?.replace("refs/heads/", "") ?? "detached",
+    isMain: id === MAIN_WORKTREE_ID,
+    createdAt,
+  };
+};
+
+/* WHY: `worktree list -z` needs git ≥ 2.36 and hard-errors (exit 129) on older git — Ubuntu
+   22.04 ships 2.34, so a Remote-SSH host is a realistic case. Fall back to the newline format,
+   but only for that specific rejection: any other git failure must still propagate. */
+const readWorktreeRecords = async (cwd: string) => {
+  try {
+    const { stdout } = await execFileAsync("git", ["worktree", "list", "--porcelain", "-z"], {
+      cwd,
+    });
+    return stdout.split("\0\0").map((record) => record.split("\0"));
+  } catch (error) {
+    if (!/unknown (switch|option)/i.test(stderrOf(error))) throw error;
+    const { stdout } = await execFileAsync("git", ["worktree", "list", "--porcelain"], { cwd });
+    return stdout.split("\n\n").map((record) => record.split("\n"));
+  }
+};
+
+export const listWorktrees = async (cwd: string) => {
+  const records = await readWorktreeRecords(cwd);
+  return records.map(parseWorktree).filter((worktree) => worktree !== undefined);
+};
+
+export const isNotARepo = (error: unknown) => /not a git repository/i.test(stderrOf(error));
+
+export const moveWorktree = ({ from, to, gitCwd }: { from: string; to: string; gitCwd: string }) =>
+  execFileAsync("git", ["worktree", "move", from, to], { cwd: gitCwd });
+
+export const removeWorktreeAt = ({
+  path,
+  gitCwd,
+  force,
+}: {
+  path: string;
+  gitCwd: string;
+  force: boolean;
+}) =>
+  execFileAsync("git", ["worktree", "remove", ...(force ? ["--force"] : []), path], {
+    cwd: gitCwd,
+  });
+
+export const describeDirt = async (worktreePath: string) => {
+  const { stdout } = await execFileAsync("git", ["status", "--porcelain"], {
+    cwd: worktreePath,
+  });
+  const lines = stdout.split("\n").filter(Boolean);
+  const shown = lines.slice(0, 10).join("\n");
+  return lines.length > 10 ? `${shown}\n… and ${lines.length - 10} more` : shown;
+};

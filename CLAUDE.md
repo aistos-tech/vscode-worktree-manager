@@ -1,7 +1,9 @@
 # vscode-worktree-manager
 
-A private VS Code extension for switching between git worktrees. One TypeScript file,
-`src/extension.ts`, ~700 lines. `private: true`, never published — installed by hand through
+A private VS Code extension for switching between git worktrees. `src/` splits along the seams the
+plan named: `worktree.ts` (porcelain parsing, identity, the git calls), `state.ts` (`globalState` —
+colours, pins, recency), `manage.ts` (rename and delete), `extension.ts` (activation, status bar,
+switcher). `private: true`, never published — installed by hand through
 *Install Extension from Location…*.
 
 ## Standards come from the shared plugin

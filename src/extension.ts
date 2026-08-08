@@ -1,5 +1,7 @@
 import { basename } from "node:path";
 import * as vscode from "vscode";
+import { bootstrapWorktree } from "./bootstrap";
+import { resolveHook } from "./config";
 import { createWorktree } from "./create";
 import { deleteWorktree, renameWorktree } from "./manage";
 import {
@@ -20,8 +22,12 @@ const DELETE_COMMAND = "worktreeManager.delete";
 const CREATE_COMMAND = "worktreeManager.create";
 const FORGET_APPROVAL_COMMAND = "worktreeManager.hooks.forget";
 const LIST_APPROVALS_COMMAND = "worktreeManager.hooks.listApprovals";
+const BOOTSTRAP_COMMAND = "worktreeManager.bootstrap";
 const RENAME_TOOLTIP = "Rename";
 const DELETE_TOOLTIP = "Delete";
+const BOOTSTRAP_TOOLTIP = "Re-run the post-create hook";
+const PIN_TOOLTIP = "Pin";
+const UNPIN_TOOLTIP = "Unpin";
 
 /* WHY: a swallowed git failure looks identical to "no worktrees" — the extension just fails to
    appear, with nothing to diagnose. Only a non-repo folder is legitimately silent, and only when
@@ -65,21 +71,27 @@ type ToItemProps = {
   worktree: Worktree;
   isPinned: boolean;
   isCurrent: boolean;
+  canBootstrap: boolean;
 };
 
-const toItem = ({ worktree, isPinned, isCurrent }: ToItemProps): WorktreeItem => ({
+const toItem = ({ worktree, isPinned, isCurrent, canBootstrap }: ToItemProps): WorktreeItem => ({
   label: `${isCurrent ? "$(check)" : "$(circle-outline)"} ${basename(worktree.path)}`,
   description: worktree.branch,
   buttons: [
     ...(worktree.isMain
       ? []
       : [
+          /* Never on the primary's row — one click there would re-bootstrap the primary itself —
+             and never in a repo with no postCreate hook, where it would be a dead button. */
+          ...(canBootstrap
+            ? [{ iconPath: new vscode.ThemeIcon("sync"), tooltip: BOOTSTRAP_TOOLTIP }]
+            : []),
           { iconPath: new vscode.ThemeIcon("edit"), tooltip: RENAME_TOOLTIP },
           { iconPath: new vscode.ThemeIcon("trash"), tooltip: DELETE_TOOLTIP },
         ]),
     {
       iconPath: new vscode.ThemeIcon(isPinned ? "pinned" : "pin"),
-      tooltip: isPinned ? "Unpin" : "Pin",
+      tooltip: isPinned ? UNPIN_TOOLTIP : PIN_TOOLTIP,
     },
   ],
   worktree,
@@ -96,14 +108,16 @@ type BuildItemsProps = {
   pinned: string[];
   opened: OpenedMap;
   currentPath: string | undefined;
+  canBootstrap: boolean;
 };
 
-const buildItems = ({ worktrees, pinned, opened, currentPath }: BuildItemsProps) => {
+const buildItems = ({ worktrees, pinned, opened, currentPath, canBootstrap }: BuildItemsProps) => {
   const toEntry = (worktree: Worktree) =>
     toItem({
       worktree,
       isPinned: pinned.includes(worktree.id),
       isCurrent: worktree.path === currentPath,
+      canBootstrap,
     });
 
   const ordered = [...worktrees].sort(byRecency(opened));
@@ -148,6 +162,9 @@ const showSwitcher = async ({ context, cwd, currentPath }: ShowSwitcherProps) =>
   if (worktrees.length === 0) return;
   await ensureColours({ context, worktrees });
 
+  const mainPath = worktrees.find((worktree) => worktree.isMain)?.path ?? cwd;
+  const canBootstrap = Boolean(resolveHook({ hook: "postCreate", primaryPath: mainPath }).command);
+
   const picker = vscode.window.createQuickPick<vscode.QuickPickItem>();
   picker.placeholder = "Switch worktree";
   picker.matchOnDescription = true;
@@ -164,6 +181,7 @@ const showSwitcher = async ({ context, cwd, currentPath }: ShowSwitcherProps) =>
         pinned: readPinned(context),
         opened: readOpened(context),
         currentPath,
+        canBootstrap,
       }),
       createItem(picker.value.trim()),
     ];
@@ -174,10 +192,22 @@ const showSwitcher = async ({ context, cwd, currentPath }: ShowSwitcherProps) =>
 
   picker.onDidChangeValue(() => refresh());
 
+  /* Dispatches on tooltip, and EVERY case is explicit. The pin toggle used to be the unguarded
+     else, so any button added without its own branch fell through and silently pinned or unpinned
+     the row instead of doing its own job — a `$(sync)` that pins is a confusing bug, and the next
+     button into the same trap would be worse. */
   picker.onDidTriggerItemButton(async ({ item, button }) => {
     if (!isWorktreeItem(item)) return;
 
-    const mainPath = worktrees.find((worktree) => worktree.isMain)?.path ?? cwd;
+    if (button.tooltip === BOOTSTRAP_TOOLTIP) {
+      picker.dispose();
+      await bootstrapWorktree({
+        context,
+        worktree: item.worktree,
+        primaryPath: mainPath,
+      });
+      return;
+    }
 
     if (button.tooltip === RENAME_TOOLTIP) {
       picker.dispose();
@@ -201,8 +231,10 @@ const showSwitcher = async ({ context, cwd, currentPath }: ShowSwitcherProps) =>
       return;
     }
 
-    await togglePinned(context, item.worktree.id);
-    refresh();
+    if (button.tooltip === PIN_TOOLTIP || button.tooltip === UNPIN_TOOLTIP) {
+      await togglePinned(context, item.worktree.id);
+      refresh();
+    }
   });
 
   /* WHY: openFolder with forceReuseWindow tears down the extension host mid-call —
@@ -215,7 +247,7 @@ const showSwitcher = async ({ context, cwd, currentPath }: ShowSwitcherProps) =>
       picker.dispose();
       void createWorktree({
         context,
-        gitCwd: worktrees.find((worktree) => worktree.isMain)?.path ?? cwd,
+        gitCwd: mainPath,
         worktrees,
         branchSeed: seed || undefined,
       });
@@ -294,6 +326,15 @@ export const activate = async (context: vscode.ExtensionContext) => {
         context,
         gitCwd: worktrees.find((worktree) => worktree.isMain)?.path ?? cwd,
         worktrees,
+      });
+    }),
+    vscode.commands.registerCommand(BOOTSTRAP_COMMAND, async () => {
+      const resolved = await requireCurrent();
+      if (!resolved) return;
+      return bootstrapWorktree({
+        context,
+        worktree: resolved.current,
+        primaryPath: resolved.mainPath,
       });
     }),
     vscode.commands.registerCommand(FORGET_APPROVAL_COMMAND, async () => {

@@ -31,6 +31,10 @@ Per-worktree identity and fast switching for git worktrees in VS Code.
   repo's `postCreate` hook and offers **Open** / **Open in New Window** / **Stay**. The create row's
   label embeds whatever you typed, so it stays visible while the list filters — a static row is
   hidden exactly when you want it.
+- **Bootstrap** — `Worktree: Bootstrap…`, or the `$(sync)` button on a switcher row. Re-runs the
+  repo's `postCreate` hook against a worktree that already exists: the recovery path for a failed
+  create, a failed delete, and worktrees made by agent tooling outside the editor. Offered only when
+  the repo *has* a `postCreate` hook, and never on the primary worktree's row.
 - **Per-repo hooks** — a repo can bind a command to run after a worktree is created and before one
   is deleted. See below.
 - **Hook approvals** — `Worktree: List Hook Approvals` shows what you have approved;
@@ -119,6 +123,16 @@ hook fails, git exits 1 *having already created and registered the worktree* —
 has no `node_modules`, so a repo whose hooks assert their own installation hits this routinely.
 Rather than reporting the error and leaving an orphan you were never told about, the extension
 re-reads `git worktree list` and offers **Continue anyway** or **Roll back**.
+
+### Re-running the hook
+
+⚠️ **A bootstrap is not a repair.** It rewrites the generated config a worktree owns — env files,
+local tool config, seed data — and may reset its databases. Those files are gitignored, so a misclick
+on the wrong row loses hand edits with no git recovery and no undo. It asks first, and it asks again
+whether the worktree is for **work** or **review**, which is what supplies `WORKTREE_PURPOSE`.
+
+It reports both outcomes. The hook's task panel opens without focus, so a silent failure would be
+invisible — after the hook had already rewritten `.env`.
 
 ### The CLIs remain
 

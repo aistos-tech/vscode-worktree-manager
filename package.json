@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Worktree Manager",
   "description": "Per-worktree identity and fast switching for git worktrees",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -116,6 +116,10 @@
       {
         "command": "worktreeManager.create",
         "title": "Worktree: Create…"
+      },
+      {
+        "command": "worktreeManager.github.signIn",
+        "title": "Worktree: Sign in to GitHub"
       },
       {
         "command": "worktreeManager.linear.signIn",

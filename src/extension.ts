@@ -3,6 +3,13 @@ import * as vscode from "vscode";
 import { bootstrapWorktree } from "./bootstrap";
 import { resolveHook } from "./config";
 import { createWorktree } from "./create";
+import {
+  fetchReviewRequested,
+  GitHubError,
+  hasGitHubSession,
+  signInToGitHub,
+} from "./github/client";
+import { parseRemote } from "./github/remote";
 import { linearToken, onSignOut, signIn, signOut } from "./linear/auth";
 import {
   badgeFor,
@@ -26,7 +33,7 @@ import {
   togglePinned,
 } from "./state";
 import { forgetApproval, listApprovals } from "./trust";
-import { isNotARepo, listWorktrees, stderrOf, type Worktree } from "./worktree";
+import { isNotARepo, listWorktrees, originUrl, stderrOf, type Worktree } from "./worktree";
 
 const SWITCH_COMMAND = "worktreeManager.switch";
 const RENAME_COMMAND = "worktreeManager.rename";
@@ -161,6 +168,10 @@ const buildItems = ({ worktrees, pinned, opened, currentPath, canBootstrap }: Bu
 
 const isWorktreeItem = (item: vscode.QuickPickItem): item is WorktreeItem => "worktree" in item;
 
+type PrItem = vscode.QuickPickItem & { prBranch: string; prUrl: string };
+
+const isPrItem = (item: vscode.QuickPickItem): item is PrItem => "prBranch" in item;
+
 type IssueItem = vscode.QuickPickItem & { issueBranch: string };
 
 const isIssueItem = (item: vscode.QuickPickItem): item is IssueItem => "issueBranch" in item;
@@ -266,6 +277,8 @@ const showSwitcher = async ({
   let active: PickerContext = initialContext;
   let issueRows: CachedRow[] = [];
   let issueNote = "";
+  let prRows: { number: number; title: string; branch: string; url: string }[] = [];
+  let prNote = "";
   /* Drops a response that lands after a newer one. VS Code does not debounce and a slow reply can
      arrive after the context has already changed, painting the wrong list. */
   let generation = 0;
@@ -312,11 +325,19 @@ const showSwitcher = async ({
         : []),
       ...(active === "prs"
         ? [
-            {
-              label: "$(circle-slash) The pull request context is not wired up yet",
-              detail: "Alt+1 returns to worktrees",
-              alwaysShow: true,
-            },
+            ...(prNote ? [{ label: prNote, alwaysShow: true }] : []),
+            ...prRows.map((row) => {
+              const existing = worktrees.some((worktree) => worktree.branch === row.branch);
+              return {
+                label: `${existing ? "$(check)" : "$(circle-outline)"} #${row.number} ${row.title}`,
+                description: row.branch,
+                detail: existing
+                  ? undefined
+                  : "Opens the PR — checkout is the GitHub extension's job",
+                prBranch: row.branch,
+                prUrl: row.url,
+              };
+            }),
           ]
         : []),
     ];
@@ -370,6 +391,40 @@ const showSwitcher = async ({
     }
   };
 
+  const loadPrs = async () => {
+    const remote = parseRemote(await originUrl(cwd));
+    if (!remote) {
+      prNote = "$(warning) No GitHub remote on this repo";
+      refresh();
+      return;
+    }
+    if (!(await hasGitHubSession())) {
+      prNote = "$(key) Sign in to GitHub to list pull requests";
+      refresh();
+      return;
+    }
+    const mine = ++generation;
+    picker.busy = true;
+    try {
+      const prs = await fetchReviewRequested(remote);
+      if (mine !== generation) return;
+      prRows = prs.map((pr) => ({
+        number: pr.number,
+        title: pr.title,
+        branch: pr.headRefName,
+        url: pr.url,
+      }));
+      prNote = prRows.length ? "" : "$(inbox) Nothing is waiting on your review";
+      refresh();
+    } catch (error) {
+      if (mine !== generation) return;
+      prNote = `$(warning) ${error instanceof GitHubError ? error.message : String(error)}`;
+      refresh();
+    } finally {
+      if (mine === generation) picker.busy = false;
+    }
+  };
+
   const applyContext = (next: PickerContext) => {
     active = next;
     const entry = CONTEXTS.find((candidate) => candidate.id === next);
@@ -378,6 +433,7 @@ const showSwitcher = async ({
     picker.buttons = stripFor(next);
     refresh();
     if (next === "linear") void loadLinear();
+    if (next === "prs") void loadPrs();
   };
 
   picker.onDidTriggerButton((button) => {
@@ -448,6 +504,24 @@ const showSwitcher = async ({
         worktrees,
         branchSeed: seed || undefined,
       });
+      return;
+    }
+    /* Read-only, deliberately. PR worktree CREATION is composed, not built: the GitHub PR
+       extension already ships "Checkout Pull Request in Worktree", and re-implementing it here
+       would duplicate a free, maintained feature. What nothing else provides is the join — knowing
+       that #404 is the worktree you already have — so `✓` switches and `○` opens the PR. */
+    if (isPrItem(selected)) {
+      const branch = selected.prBranch;
+      const match = worktrees.find((worktree) => worktree.branch === branch);
+      const url = selected.prUrl;
+      picker.dispose();
+      if (match) {
+        vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(match.path), {
+          forceReuseWindow: true,
+        });
+        return;
+      }
+      if (url) void vscode.env.openExternal(vscode.Uri.parse(url));
       return;
     }
     if (isIssueItem(selected)) {
@@ -562,6 +636,11 @@ export const activate = async (context: vscode.ExtensionContext) => {
         },
       ),
     ),
+    vscode.commands.registerCommand("worktreeManager.github.signIn", async () => {
+      if (await signInToGitHub()) {
+        vscode.window.showInformationMessage("Signed in to GitHub.");
+      }
+    }),
     vscode.commands.registerCommand(SIGN_IN_COMMAND, async () => {
       const token = await signIn(context);
       if (token) vscode.window.showInformationMessage("Signed in to Linear.");

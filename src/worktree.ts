@@ -190,3 +190,14 @@ export const addWorktree = ({
       : ["worktree", "add", "-b", branch, dest, source],
     { cwd: gitCwd },
   );
+
+export const originUrl = async (gitCwd: string) => {
+  try {
+    const { stdout } = await execFileAsync("git", ["config", "--get", "remote.origin.url"], {
+      cwd: gitCwd,
+    });
+    return stdout.trim();
+  } catch {
+    return "";
+  }
+};

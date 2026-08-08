@@ -36,9 +36,9 @@ Per-worktree identity and fast switching for git worktrees in VS Code.
   create, a failed delete, and worktrees made by agent tooling outside the editor. Offered only when
   the repo *has* a `postCreate` hook, and never on the primary worktree's row.
 - **Picker contexts** — the switcher carries an inline strip of three toggles: worktrees (default,
-  local, ~15 ms), Linear issues, and pull requests. `alt+1` / `alt+2` / `alt+3` switch while the
-  picker holds focus, and each context is also its own command so it can be bound to open straight
-  onto that tab. Only the worktrees context has a source behind it today.
+  local, ~15 ms), Linear issues, and pull requests awaiting your review. `alt+1` / `alt+2` / `alt+3`
+  switch while the picker holds focus, and each context is also its own command so it can be bound
+  to open straight onto that tab.
 - **Linear badge** — when a branch is named after a Linear issue, the status bar shows its
   identifier and the tooltip links to it. `Worktree: Open Linear Issue` opens it;
   `Worktree: Bind Linear Issue…` sets one by hand for a branch that carries none. No credentials
@@ -181,6 +181,25 @@ comments.** `globalState` is plaintext in `state.vscdb` and is shared across rem
 repo path, and ticket bodies here carry personal data. A title is already visible in the
 picker; a description is a different exposure. Signing out deletes the cache in the same act as the
 credential.
+
+### The pull request context
+
+Lists what is **waiting on your review**, not every open PR. Measured on this repo:
+`review-requested:@me` returns 3, all open PRs returns 35 — most of them your own, which is a
+scrolling exercise rather than a queue.
+
+GitHub authentication is free: `'github'` is a built-in provider id, so there is no extension
+dependency, no client secret, no URI handler and no refresh handling. `Worktree: Sign in to GitHub`
+if you have not already.
+
+**Read-only, deliberately.** `✓` switches to the worktree you already have for that PR's branch;
+`○` opens the PR. Checking a PR out into a worktree is *not* built here — the GitHub Pull Requests
+extension already ships "Checkout Pull Request in Worktree", and re-implementing a free, maintained
+feature to save one hand-off is not worth it. Follow their checkout with `$(sync)` to bootstrap.
+
+The reason this context exists at all, given that extension also lists PRs, is the **join**: it
+renders PRs in its own sidebar, unaware of worktrees, so it cannot tell you that `#404` is the
+worktree you already have open, or switch you to it.
 
 ⚠️ **No extension has shipped in-session QuickPick tabs**, so there is no reference implementation
 and no worn path through the edge cases. If `alt+1/2/3` turns out not to fire — on macOS `alt` is

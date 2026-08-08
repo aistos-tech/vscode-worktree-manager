@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Worktree Manager",
   "description": "Per-worktree identity and fast switching for git worktrees",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -130,6 +130,10 @@
         "title": "Worktree: Sign out of Linear"
       },
       {
+        "command": "worktreeManager.linear.previewIssue",
+        "title": "Worktree: Preview Linear Issue"
+      },
+      {
         "command": "worktreeManager.linear.openIssue",
         "title": "Worktree: Open Linear Issue"
       },
@@ -177,8 +181,21 @@
         "command": "worktreeManager.showPRs",
         "key": "alt+3",
         "when": "worktreeManager.pickerOpen"
+      },
+      {
+        "command": "worktreeManager.linear.previewIssue",
+        "key": "right",
+        "when": "worktreeManager.linearEnabled && (worktreeManager.pickerOpen || worktreeManager.previewOpen) && (!inputFocus || cursorAtEndOfQuickInputBox)"
       }
-    ]
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "worktreeManager.linear.previewIssue",
+          "when": "false"
+        }
+      ]
+    }
   },
   "scripts": {
     "build": "bun build src/extension.ts --outdir dist --target node --format cjs --external vscode --minify",

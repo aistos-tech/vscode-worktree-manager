@@ -20,9 +20,11 @@ import {
   tooltipLinkFor,
 } from "./linear/badge";
 import { fetchMyIssues, LinearError } from "./linear/client";
+import { issueIdFor } from "./linear/id";
+import { showIssuePreview } from "./linear/preview";
 import { deleteWorktree, renameWorktree } from "./manage";
 import { type CachedRow, clearCache, describeAge, readCache, writeCache } from "./picker/cache";
-import { enterPicker, exitAll } from "./picker/context-keys";
+import { enterPicker, exitAll, exitPicker } from "./picker/context-keys";
 import {
   ensureColours,
   type OpenedMap,
@@ -44,6 +46,7 @@ const SHOW_LINEAR_COMMAND = "worktreeManager.showLinear";
 const SHOW_PRS_COMMAND = "worktreeManager.showPRs";
 const SIGN_IN_COMMAND = "worktreeManager.linear.signIn";
 const SIGN_OUT_COMMAND = "worktreeManager.linear.signOut";
+const PREVIEW_ISSUE_COMMAND = "worktreeManager.linear.previewIssue";
 const OPEN_ISSUE_COMMAND = "worktreeManager.linear.openIssue";
 const BIND_ISSUE_COMMAND = "worktreeManager.linear.bindIssue";
 const FORGET_APPROVAL_COMMAND = "worktreeManager.hooks.forget";
@@ -282,6 +285,12 @@ const showSwitcher = async ({
   /* Drops a response that lands after a newer one. VS Code does not debounce and a slow reply can
      arrive after the context has already changed, painting the wrong list. */
   let generation = 0;
+
+  /* Set immediately before every programmatic hide()/show() hand-over. `show()` on the preview
+     fires THIS picker's onDidHide first — verbatim in the typings, "Any other input UI will first
+     fire an onDidHide event" — and the handler below is what would otherwise dispose the instance
+     the preview needs to restore. There is no `onWillHide` to infer intent from after the fact. */
+  let handingOverToPreview = false;
 
   const picker = vscode.window.createQuickPick<vscode.QuickPickItem>();
   picker.matchOnDescription = true;
@@ -548,20 +557,69 @@ const showSwitcher = async ({
   });
 
   /* Cleared BEFORE dispose and in a finally, so an exception between show() and here cannot leave
-     the key set. See picker/context-keys.ts for why a stuck key is a workbench-wide problem. */
+     the key set. See picker/context-keys.ts for why a stuck key is a workbench-wide problem.
+
+     Conditional on the hand-over flag: disposing here during a hand-over would destroy the instance
+     the preview is about to restore, and reading activeItems off it would throw. */
   picker.onDidHide(() => {
+    if (handingOverToPreview) return;
     try {
+      activePreviewTrigger = undefined;
       void exitAll();
     } finally {
       picker.dispose();
     }
   });
 
+  /* Captured by INSTANCE before the hand-over and restored after, because QuickPick matches
+     activeItems by object identity — a fresh object with an identical label does not restore the
+     highlight. */
+  const preview = async () => {
+    const [row] = picker.activeItems;
+    if (!row) return;
+    const identifier = isWorktreeItem(row)
+      ? identifierFor({
+          context,
+          worktreeId: row.worktree.id,
+          branch: row.worktree.branch,
+        })
+      : isIssueItem(row)
+        ? issueIdFor({ branch: row.issueBranch })
+        : isPrItem(row)
+          ? issueIdFor({ branch: row.prBranch })
+          : undefined;
+    /* Not the create row: → on it does nothing. */
+    if (isCreateItem(row)) return;
+
+    const restore = picker.activeItems;
+    handingOverToPreview = true;
+    await exitPicker();
+    await showIssuePreview({
+      context,
+      identifier,
+      onBack: () => {
+        handingOverToPreview = true;
+        picker.show();
+        picker.activeItems = restore;
+        handingOverToPreview = false;
+        void enterPicker();
+      },
+    });
+    handingOverToPreview = false;
+  };
+
+  activePreviewTrigger = preview;
+
   picker.show();
   /* AFTER show(), not before: show() fires any other input UI's onDidHide, whose handler would
      clear a key set beforehand. */
   await enterPicker();
 };
+
+/* The command reads the active row off whichever surface is showing, held as ONE explicit
+   reference — there is no way to pass the active row as a keybinding argument, and there are two
+   surfaces. Nulled on hide so the command no-ops instead of touching a disposed object. */
+let activePreviewTrigger: (() => Promise<void>) | undefined;
 
 type CurrentWorktreeProps = {
   root: string;
@@ -641,6 +699,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
         vscode.window.showInformationMessage("Signed in to GitHub.");
       }
     }),
+    vscode.commands.registerCommand(PREVIEW_ISSUE_COMMAND, () => activePreviewTrigger?.()),
     vscode.commands.registerCommand(SIGN_IN_COMMAND, async () => {
       const token = await signIn(context);
       if (token) vscode.window.showInformationMessage("Signed in to Linear.");

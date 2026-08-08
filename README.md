@@ -39,6 +39,9 @@ Per-worktree identity and fast switching for git worktrees in VS Code.
   local, ~15 ms), Linear issues, and pull requests awaiting your review. `alt+1` / `alt+2` / `alt+3`
   switch while the picker holds focus, and each context is also its own command so it can be bound
   to open straight onto that tab.
+- **Preview a row's issue (→)** — highlight any row in the picker and press **RightArrow**. The
+  picker is replaced by a popup showing that branch's Linear issue; the platform Back binding
+  (`ctrl+-` on macOS) or Escape returns you to the list with the same row still highlighted.
 - **Linear badge** — when a branch is named after a Linear issue, the status bar shows its
   identifier and the tooltip links to it. `Worktree: Open Linear Issue` opens it;
   `Worktree: Bind Linear Issue…` sets one by hand for a branch that carries none. No credentials
@@ -284,6 +287,33 @@ excluded outright, not merely stale.
 resolved 1.104 → 1.125, so post-floor APIs typechecked cleanly and would have thrown at runtime on
 the version the manifest claimed to support. The pin makes the compiler enforce the floor; the
 committed `bun.lock` and CI's `--frozen-lockfile` keep a local install from drifting away from it.
+
+### Previewing a row's issue
+
+**→** on any picker row opens a popup for that row's issue — a worktree row, a Linear row, or a PR
+row (whose issue is derived from its head branch). **←** is deliberately *not* bound: typing in the
+popup's filter box re-sorts it, so you need cursor-left to undo what you typed. Back is the platform
+binding or Escape.
+
+It shows **scalar fields only** — identifier, title, state, assignee — plus `Open in Linear`.
+
+⚠️ **That is a deliberate limit, not an unfinished one.** `QuickPickItem` carries no markdown and
+its `detail` line does not wrap: a long line truncates with an ellipsis. Rendering a ticket *body*
+here would put a silently-cut sentence one row away from the trash button, and a truncated line can
+read as a complete sentence that says the opposite of the full one. It also keeps the extension free
+of a bundled markdown parser, which would be its first runtime dependency.
+
+Every state renders a row rather than an error: a branch with no identifier offers **Bind a Linear
+issue…**, no credential offers **Sign in to Linear**, and an identifier the workspace does not have
+says so and offers to bind a different one. A blank popup is never a valid outcome.
+
+⚠️ **All issue-derived text is escaped before it reaches a row.** `$(name)` renders as a theme icon
+in `label`, `description` *and* `detail`, so a ticket titled `run $(bun test)` would otherwise be
+swallowed or drawn as a broken glyph.
+
+📌 `→` is inert in an extension's QuickPick by default — its only binding, `acceptInBackground`,
+is gated on a flag extensions cannot set — so claiming the key displaces nothing. The `when` clause
+reuses VS Code's own cursor guard so the key still moves the cursor mid-filter.
 
 ## Remote-SSH
 

@@ -35,6 +35,10 @@ Per-worktree identity and fast switching for git worktrees in VS Code.
   repo's `postCreate` hook against a worktree that already exists: the recovery path for a failed
   create, a failed delete, and worktrees made by agent tooling outside the editor. Offered only when
   the repo *has* a `postCreate` hook, and never on the primary worktree's row.
+- **Linear badge** — when a branch is named after a Linear issue, the status bar shows its
+  identifier and the tooltip links to it. `Worktree: Open Linear Issue` opens it;
+  `Worktree: Bind Linear Issue…` sets one by hand for a branch that carries none. No credentials
+  and no network — the link is already in the branch name.
 - **Per-repo hooks** — a repo can bind a command to run after a worktree is created and before one
   is deleted. See below.
 - **Hook approvals** — `Worktree: List Hook Approvals` shows what you have approved;
@@ -139,6 +143,26 @@ invisible — after the hook had already rewritten `.env`.
 Agent tooling creates worktrees outside the editor, and the extension cannot hook
 `git worktree add` typed into a terminal. The repo's own scripts stay the primary interface for
 scripted use.
+
+## Linear
+
+Most worktrees here are already named after a Linear issue, because the branch name is copied from
+Linear's own `branchName` rather than rebuilt from a slug. The link therefore already exists in the
+data and needs no storage — it is simply never surfaced in the editor.
+
+| Setting | Effect |
+|---|---|
+| `worktreeManager.linear.workspace` | Your workspace slug. **Required** — nothing in an identifier yields it, and team keys are unique only within a workspace. Empty disables every Linear feature. |
+| `worktreeManager.linear.openIn` | `browser` (default) or `app` for `linear://` deep links. |
+| `worktreeManager.linear.teamKeys` | e.g. `["A"]`. Optional but recommended — see below. |
+
+A branch with no identifier degrades **in silence**, never with an error: the primary worktree
+normally has none, so that is the common case rather than an exception.
+
+⚠️ **Set `teamKeys` if you want the badge to be trustworthy.** The identifier pattern matches any
+1–5 letters followed by a number, so a branch like `wip-2-something` or `fix-2-broken` produces a
+confident-looking `WIP-2` badge linking to an issue that does not exist. Listing the keys your
+workspace actually issues is what rejects those. Without it the match stays permissive.
 
 ## Remote-SSH
 

@@ -3,6 +3,14 @@ import * as vscode from "vscode";
 import { bootstrapWorktree } from "./bootstrap";
 import { resolveHook } from "./config";
 import { createWorktree } from "./create";
+import {
+  badgeFor,
+  bindIssue,
+  identifierFor,
+  openIssue,
+  publishLinearEnabled,
+  tooltipLinkFor,
+} from "./linear/badge";
 import { deleteWorktree, renameWorktree } from "./manage";
 import {
   ensureColours,
@@ -20,6 +28,8 @@ const SWITCH_COMMAND = "worktreeManager.switch";
 const RENAME_COMMAND = "worktreeManager.rename";
 const DELETE_COMMAND = "worktreeManager.delete";
 const CREATE_COMMAND = "worktreeManager.create";
+const OPEN_ISSUE_COMMAND = "worktreeManager.linear.openIssue";
+const BIND_ISSUE_COMMAND = "worktreeManager.linear.bindIssue";
 const FORGET_APPROVAL_COMMAND = "worktreeManager.hooks.forget";
 const LIST_APPROVALS_COMMAND = "worktreeManager.hooks.listApprovals";
 const BOOTSTRAP_COMMAND = "worktreeManager.bootstrap";
@@ -52,15 +62,19 @@ type RenderStatusProps = {
   item: vscode.StatusBarItem;
   worktree: Worktree;
   colour: string;
+  identifier: string | undefined;
 };
 
-const renderStatus = ({ item, worktree, colour }: RenderStatusProps) => {
+const renderStatus = ({ item, worktree, colour, identifier }: RenderStatusProps) => {
   const name = basename(worktree.path);
-  item.text = `$(git-branch) ${name}`;
+  item.text = `$(git-branch) ${name}${badgeFor(identifier)}`;
   item.color = colour;
-  item.tooltip = new vscode.MarkdownString(
-    `**${name}** · \`${worktree.branch}\`\n\n${worktree.path}\n\nColour \`${colour}\``,
+  const tooltip = new vscode.MarkdownString(
+    `**${name}** · \`${worktree.branch}\`\n\n${worktree.path}\n\nColour \`${colour}\`${tooltipLinkFor(identifier)}`,
   );
+  /* The tooltip carries a link now, so it has to be trusted for the link to be clickable. */
+  tooltip.isTrusted = true;
+  item.tooltip = tooltip;
   item.command = SWITCH_COMMAND;
   item.show();
 };
@@ -386,6 +400,15 @@ export const activate = async (context: vscode.ExtensionContext) => {
   const resolved = await withCurrentWorktree({ root, announce: false });
   if (!resolved) return;
 
+  await publishLinearEnabled();
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("worktreeManager.linear.workspace")) {
+        void publishLinearEnabled();
+      }
+    }),
+  );
+
   await rememberOpened({ context, id: resolved.current.id });
   const colours = await ensureColours({ context, worktrees: resolved.worktrees });
   const item = vscode.window.createStatusBarItem(
@@ -394,12 +417,40 @@ export const activate = async (context: vscode.ExtensionContext) => {
     100,
   );
   item.name = "Worktree";
-  renderStatus({
-    item,
-    worktree: resolved.current,
-    colour: colours[resolved.current.id] ?? PALETTE[0],
-  });
+  const render = () =>
+    renderStatus({
+      item,
+      worktree: resolved.current,
+      colour: colours[resolved.current.id] ?? PALETTE[0],
+      identifier: identifierFor({
+        context,
+        worktreeId: resolved.current.id,
+        branch: resolved.current.branch,
+      }),
+    });
+  render();
   context.subscriptions.push(item);
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(OPEN_ISSUE_COMMAND, () => {
+      const identifier = identifierFor({
+        context,
+        worktreeId: resolved.current.id,
+        branch: resolved.current.branch,
+      });
+      if (!identifier) {
+        vscode.window.showInformationMessage(
+          'Worktree Manager: no Linear issue on this branch. Bind one with "Worktree: Bind Linear Issue…".',
+        );
+        return;
+      }
+      return openIssue(identifier);
+    }),
+    vscode.commands.registerCommand(BIND_ISSUE_COMMAND, async () => {
+      await bindIssue({ context, worktreeId: resolved.current.id });
+      render();
+    }),
+  );
 };
 
 export const deactivate = () => {};

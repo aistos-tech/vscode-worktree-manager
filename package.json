@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Worktree Manager",
   "description": "Per-worktree identity and fast switching for git worktrees",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -46,6 +46,31 @@
           "scope": "window",
           "markdownDescription": "Shell command run **before** a worktree is deleted, from the primary worktree. A non-zero exit aborts the deletion, so a failed teardown cannot leave the worktree removed and its stack running. Empty disables it."
         },
+        "worktreeManager.linear.workspace": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "markdownDescription": "Your Linear workspace slug — the `<workspace>` in `https://linear.app/<workspace>/issue/A-1661`. Required to build issue links, and not derivable: nothing in an issue identifier yields it, and team keys are unique only within a workspace. Empty disables every Linear feature."
+        },
+        "worktreeManager.linear.openIn": {
+          "type": "string",
+          "enum": [
+            "browser",
+            "app"
+          ],
+          "default": "browser",
+          "scope": "window",
+          "markdownDescription": "Open Linear issues in the browser (`https://`) or the desktop app (`linear://`)."
+        },
+        "worktreeManager.linear.teamKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "window",
+          "markdownDescription": "Team keys this workspace issues, e.g. `[\"A\"]`. When set, a branch whose prefix is not one of them yields no badge — which is what stops `wip-2-something` rendering a confident link to a non-existent `WIP-2`. Empty accepts any identifier-shaped prefix."
+        },
         "worktreeManager.worktreesRoot": {
           "type": "string",
           "default": "",
@@ -73,6 +98,14 @@
       {
         "command": "worktreeManager.create",
         "title": "Worktree: Create…"
+      },
+      {
+        "command": "worktreeManager.linear.openIssue",
+        "title": "Worktree: Open Linear Issue"
+      },
+      {
+        "command": "worktreeManager.linear.bindIssue",
+        "title": "Worktree: Bind Linear Issue…"
       },
       {
         "command": "worktreeManager.bootstrap",

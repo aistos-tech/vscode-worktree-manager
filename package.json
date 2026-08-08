@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Worktree Manager",
   "description": "Per-worktree identity and fast switching for git worktrees",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -96,6 +96,18 @@
         "title": "Worktree: Switch…"
       },
       {
+        "command": "worktreeManager.showWorktrees",
+        "title": "Worktree: Show Worktrees"
+      },
+      {
+        "command": "worktreeManager.showLinear",
+        "title": "Worktree: Show Linear Issues"
+      },
+      {
+        "command": "worktreeManager.showPRs",
+        "title": "Worktree: Show Pull Requests"
+      },
+      {
         "command": "worktreeManager.create",
         "title": "Worktree: Create…"
       },
@@ -132,6 +144,21 @@
       {
         "command": "worktreeManager.switch",
         "key": "ctrl+shift+w"
+      },
+      {
+        "command": "worktreeManager.showWorktrees",
+        "key": "alt+1",
+        "when": "worktreeManager.pickerOpen"
+      },
+      {
+        "command": "worktreeManager.showLinear",
+        "key": "alt+2",
+        "when": "worktreeManager.pickerOpen"
+      },
+      {
+        "command": "worktreeManager.showPRs",
+        "key": "alt+3",
+        "when": "worktreeManager.pickerOpen"
       }
     ]
   },

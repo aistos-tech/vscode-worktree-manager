@@ -12,6 +12,7 @@ import {
   tooltipLinkFor,
 } from "./linear/badge";
 import { deleteWorktree, renameWorktree } from "./manage";
+import { enterPicker, exitAll } from "./picker/context-keys";
 import {
   ensureColours,
   type OpenedMap,
@@ -28,6 +29,9 @@ const SWITCH_COMMAND = "worktreeManager.switch";
 const RENAME_COMMAND = "worktreeManager.rename";
 const DELETE_COMMAND = "worktreeManager.delete";
 const CREATE_COMMAND = "worktreeManager.create";
+const SHOW_WORKTREES_COMMAND = "worktreeManager.showWorktrees";
+const SHOW_LINEAR_COMMAND = "worktreeManager.showLinear";
+const SHOW_PRS_COMMAND = "worktreeManager.showPRs";
 const OPEN_ISSUE_COMMAND = "worktreeManager.linear.openIssue";
 const BIND_ISSUE_COMMAND = "worktreeManager.linear.bindIssue";
 const FORGET_APPROVAL_COMMAND = "worktreeManager.hooks.forget";
@@ -165,13 +169,64 @@ const createItem = (query: string): CreateItem => ({
   create: true,
 });
 
+/* Three contexts over one picker. Only `worktrees` has a source behind it here — deliberately, so
+   the mechanism is proven on the instant, offline, credential-free case before either network
+   context is built on it. If the keybinding half turns out not to work on macOS, what is left is
+   three separately-keybound commands, which is what every shipping extension in this space does
+   anyway; nothing built is wasted. */
+export type PickerContext = "worktrees" | "linear" | "prs";
+
+const CONTEXTS: {
+  id: PickerContext;
+  icon: string;
+  tooltip: string;
+  placeholder: string;
+}[] = [
+  {
+    id: "worktrees",
+    icon: "git-branch",
+    tooltip: "Worktrees",
+    placeholder: "Switch worktree",
+  },
+  {
+    id: "linear",
+    icon: "issues",
+    tooltip: "Linear issues",
+    placeholder: "Linear issues assigned to you",
+  },
+  {
+    id: "prs",
+    icon: "git-pull-request",
+    tooltip: "Pull requests",
+    placeholder: "Pull requests awaiting your review",
+  },
+];
+
+/* `toggle.checked` is real checked state VS Code maintains, so an active context does not have to
+   be faked by swapping icons. Mutual exclusion is NOT provided — three toggles are three
+   independent checkboxes — so the handler sets the clicked one and clears the other two, and
+   `buttons` is reassigned to repaint because it is a readonly array. */
+const stripFor = (active: PickerContext): vscode.QuickInputButton[] =>
+  CONTEXTS.map((entry) => ({
+    iconPath: new vscode.ThemeIcon(entry.icon),
+    tooltip: entry.tooltip,
+    location: vscode.QuickInputButtonLocation.Inline,
+    toggle: { checked: entry.id === active },
+  }));
+
 type ShowSwitcherProps = {
   context: vscode.ExtensionContext;
   cwd: string;
   currentPath: string | undefined;
+  initialContext?: PickerContext;
 };
 
-const showSwitcher = async ({ context, cwd, currentPath }: ShowSwitcherProps) => {
+const showSwitcher = async ({
+  context,
+  cwd,
+  currentPath,
+  initialContext = "worktrees",
+}: ShowSwitcherProps) => {
   const worktrees = await loadWorktrees({ cwd, announce: true });
   if (worktrees.length === 0) return;
   await ensureColours({ context, worktrees });
@@ -179,30 +234,61 @@ const showSwitcher = async ({ context, cwd, currentPath }: ShowSwitcherProps) =>
   const mainPath = worktrees.find((worktree) => worktree.isMain)?.path ?? cwd;
   const canBootstrap = Boolean(resolveHook({ hook: "postCreate", primaryPath: mainPath }).command);
 
+  let active: PickerContext = initialContext;
+
   const picker = vscode.window.createQuickPick<vscode.QuickPickItem>();
-  picker.placeholder = "Switch worktree";
   picker.matchOnDescription = true;
+  /* Defaults to false, so without this every refresh scrolls the list home. */
+  picker.keepScrollPosition = true;
 
   const refresh = () => {
     /* Reassigning items resets activeItems to the first row, so capture and restore it — otherwise
        the highlight jumps home on every keystroke, which is the defect the create row introduces
        by needing to be rebuilt as the query changes. Restored by INSTANCE: matching is by object
        identity, so a fresh object with an identical label does not restore the highlight. */
-    const active = picker.activeItems;
+    const wasActive = picker.activeItems;
     picker.items = [
-      ...buildItems({
-        worktrees,
-        pinned: readPinned(context),
-        opened: readOpened(context),
-        currentPath,
-        canBootstrap,
-      }),
-      createItem(picker.value.trim()),
+      /* Only the worktrees context has a source behind it in this commit. The other two paint an
+         explicit "not built yet" row rather than an empty list, because an empty QuickPick reads as
+         a failed query. */
+      ...(active === "worktrees"
+        ? [
+            ...buildItems({
+              worktrees,
+              pinned: readPinned(context),
+              opened: readOpened(context),
+              currentPath,
+              canBootstrap,
+            }),
+            createItem(picker.value.trim()),
+          ]
+        : [
+            {
+              label: `$(circle-slash) The ${active === "linear" ? "Linear" : "pull request"} context is not wired up yet`,
+              detail: "Alt+1 returns to worktrees",
+              alwaysShow: true,
+            },
+          ]),
     ];
-    const restored = picker.items.filter((item) => active.includes(item));
+    const restored = picker.items.filter((item) => wasActive.includes(item));
     if (restored.length) picker.activeItems = restored;
   };
-  refresh();
+
+  const applyContext = (next: PickerContext) => {
+    active = next;
+    const entry = CONTEXTS.find((candidate) => candidate.id === next);
+    picker.placeholder = entry?.placeholder ?? "Switch worktree";
+    picker.title = entry?.tooltip;
+    picker.buttons = stripFor(next);
+    refresh();
+  };
+
+  picker.onDidTriggerButton((button) => {
+    const entry = CONTEXTS.find((candidate) => candidate.tooltip === button.tooltip);
+    if (entry) applyContext(entry.id);
+  });
+
+  applyContext(active);
 
   picker.onDidChangeValue(() => refresh());
 
@@ -274,8 +360,20 @@ const showSwitcher = async ({ context, cwd, currentPath }: ShowSwitcherProps) =>
     });
   });
 
-  picker.onDidHide(() => picker.dispose());
+  /* Cleared BEFORE dispose and in a finally, so an exception between show() and here cannot leave
+     the key set. See picker/context-keys.ts for why a stuck key is a workbench-wide problem. */
+  picker.onDidHide(() => {
+    try {
+      void exitAll();
+    } finally {
+      picker.dispose();
+    }
+  });
+
   picker.show();
+  /* AFTER show(), not before: show() fires any other input UI's onDidHide, whose handler would
+     clear a key set beforehand. */
+  await enterPicker();
 };
 
 type CurrentWorktreeProps = {
@@ -332,6 +430,25 @@ export const activate = async (context: vscode.ExtensionContext) => {
     /* Revocation needs enumeration beside it: a trust store the user cannot list is one they
        cannot audit after a prompt they did not expect. A QuickPick over the stored keys gives both
        from one command. */
+    ...CONTEXTS.map((entry) =>
+      vscode.commands.registerCommand(
+        entry.id === "worktrees"
+          ? SHOW_WORKTREES_COMMAND
+          : entry.id === "linear"
+            ? SHOW_LINEAR_COMMAND
+            : SHOW_PRS_COMMAND,
+        () => {
+          const cwd = requireRoot();
+          if (!cwd) return;
+          return showSwitcher({
+            context,
+            cwd,
+            currentPath: cwd,
+            initialContext: entry.id,
+          });
+        },
+      ),
+    ),
     vscode.commands.registerCommand(CREATE_COMMAND, async () => {
       const cwd = requireRoot();
       if (!cwd) return;
@@ -453,4 +570,9 @@ export const activate = async (context: vscode.ExtensionContext) => {
   );
 };
 
-export const deactivate = () => {};
+/* Third clearing site, after onDidHide and the finally. If the extension is disabled or reloaded
+   with the picker open, nothing else runs — and a key left set steals an arrow key workbench-wide
+   with no API that can show which extension did it. */
+export const deactivate = () => {
+  void exitAll();
+};

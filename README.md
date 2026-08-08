@@ -35,6 +35,10 @@ Per-worktree identity and fast switching for git worktrees in VS Code.
   repo's `postCreate` hook against a worktree that already exists: the recovery path for a failed
   create, a failed delete, and worktrees made by agent tooling outside the editor. Offered only when
   the repo *has* a `postCreate` hook, and never on the primary worktree's row.
+- **Picker contexts** — the switcher carries an inline strip of three toggles: worktrees (default,
+  local, ~15 ms), Linear issues, and pull requests. `alt+1` / `alt+2` / `alt+3` switch while the
+  picker holds focus, and each context is also its own command so it can be bound to open straight
+  onto that tab. Only the worktrees context has a source behind it today.
 - **Linear badge** — when a branch is named after a Linear issue, the status bar shows its
   identifier and the tooltip links to it. `Worktree: Open Linear Issue` opens it;
   `Worktree: Bind Linear Issue…` sets one by hand for a branch that carries none. No credentials
@@ -143,6 +147,30 @@ invisible — after the hook had already rewritten `.env`.
 Agent tooling creates worktrees outside the editor, and the extension cannot hook
 `git worktree add` typed into a terminal. The repo's own scripts stay the primary interface for
 scripted use.
+
+## The picker
+
+`ctrl+shift+w` is muscle memory and nearly every press is "switch to something I already have", for
+which remote results are useless. Measured on this repo: `git worktree list --porcelain` takes
+**11–17 ms**, `gh pr list` takes **454–537 ms**. Putting network calls in front of the common case
+is a ~40× regression to serve the rare one, so the default context is local and instant and a
+network context pays its cost only when selected.
+
+Merging the three into one list fails for a second, independent reason: they are **not disjoint**.
+6 of 10 worktree branches here are also an open PR head, and 27 of 35 PR heads carry a Linear id, so
+one active ticket would occupy three rows. Contexts turn that from a dedup problem into a per-row
+badge inside a single-source list.
+
+⚠️ **No extension has shipped in-session QuickPick tabs**, so there is no reference implementation
+and no worn path through the edge cases. If `alt+1/2/3` turns out not to fire — on macOS `alt` is
+Option, and Option+digit emits a literal character — the strip's mouse toggles still work and each
+context remains its own command, which is what every comparable extension does anyway.
+
+⚠️ **A context key that gates an arrow-key binding must never be left set.** `pickerOpen` is
+cleared in `onDidHide`, in a `finally`, and in `deactivate` — three sites, because the picker sets
+no `ignoreFocusOut` and therefore hides on every ordinary focus loss, and because VS Code exposes no
+read-back or reset API for context keys. Left set, it would steal the key workbench-wide with no way
+for a user to discover which extension did it.
 
 ## Linear
 

@@ -35,7 +35,7 @@ export const signIn = async (context: vscode.ExtensionContext) => {
   return token;
 };
 
-type OnSignOut = () => Promise<void> | void;
+type OnSignOut = () => Thenable<void> | void;
 
 const signOutListeners: OnSignOut[] = [];
 

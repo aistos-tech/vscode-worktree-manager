@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import { bootstrapWorktree } from "./bootstrap";
 import { resolveHook } from "./config";
 import { createWorktree } from "./create";
-import { signIn, signOut } from "./linear/auth";
+import { linearToken, onSignOut, signIn, signOut } from "./linear/auth";
 import {
   badgeFor,
   bindIssue,
@@ -12,7 +12,9 @@ import {
   publishLinearEnabled,
   tooltipLinkFor,
 } from "./linear/badge";
+import { fetchMyIssues, LinearError } from "./linear/client";
 import { deleteWorktree, renameWorktree } from "./manage";
+import { type CachedRow, clearCache, describeAge, readCache, writeCache } from "./picker/cache";
 import { enterPicker, exitAll } from "./picker/context-keys";
 import {
   ensureColours,
@@ -159,6 +161,29 @@ const buildItems = ({ worktrees, pinned, opened, currentPath, canBootstrap }: Bu
 
 const isWorktreeItem = (item: vscode.QuickPickItem): item is WorktreeItem => "worktree" in item;
 
+type IssueItem = vscode.QuickPickItem & { issueBranch: string };
+
+const isIssueItem = (item: vscode.QuickPickItem): item is IssueItem => "issueBranch" in item;
+
+/* Existence is a per-row badge inside a single-source list, which is exactly what contexts buy:
+   `✓` means a worktree already exists for this branch and selecting it switches, `○` means it does
+   not and selecting it creates one. */
+const issueItem = ({
+  row,
+  worktrees,
+}: {
+  row: CachedRow;
+  worktrees: readonly Worktree[];
+}): IssueItem => {
+  const existing = worktrees.some((worktree) => worktree.branch === row.branch);
+  return {
+    label: `${existing ? "$(check)" : "$(circle-outline)"} ${row.identifier} ${row.title}`,
+    description: row.state,
+    detail: existing ? undefined : `Creates a worktree on ${row.branch}`,
+    issueBranch: row.branch,
+  };
+};
+
 type CreateItem = vscode.QuickPickItem & { create: true };
 
 const isCreateItem = (item: vscode.QuickPickItem): item is CreateItem => "create" in item;
@@ -239,6 +264,11 @@ const showSwitcher = async ({
   const canBootstrap = Boolean(resolveHook({ hook: "postCreate", primaryPath: mainPath }).command);
 
   let active: PickerContext = initialContext;
+  let issueRows: CachedRow[] = [];
+  let issueNote = "";
+  /* Drops a response that lands after a newer one. VS Code does not debounce and a slow reply can
+     arrive after the context has already changed, painting the wrong list. */
+  let generation = 0;
 
   const picker = vscode.window.createQuickPick<vscode.QuickPickItem>();
   picker.matchOnDescription = true;
@@ -255,6 +285,19 @@ const showSwitcher = async ({
       /* Only the worktrees context has a source behind it in this commit. The other two paint an
          explicit "not built yet" row rather than an empty list, because an empty QuickPick reads as
          a failed query. */
+      ...(active === "linear"
+        ? [
+            ...(issueNote
+              ? [
+                  {
+                    label: issueNote,
+                    alwaysShow: true,
+                  },
+                ]
+              : []),
+            ...issueRows.map((row) => issueItem({ row, worktrees })),
+          ]
+        : []),
       ...(active === "worktrees"
         ? [
             ...buildItems({
@@ -266,16 +309,65 @@ const showSwitcher = async ({
             }),
             createItem(picker.value.trim()),
           ]
-        : [
+        : []),
+      ...(active === "prs"
+        ? [
             {
-              label: `$(circle-slash) The ${active === "linear" ? "Linear" : "pull request"} context is not wired up yet`,
+              label: "$(circle-slash) The pull request context is not wired up yet",
               detail: "Alt+1 returns to worktrees",
               alwaysShow: true,
             },
-          ]),
+          ]
+        : []),
     ];
     const restored = picker.items.filter((item) => wasActive.includes(item));
     if (restored.length) picker.activeItems = restored;
+  };
+
+  /* Paints the cached copy immediately and replaces it when fresh data lands — the picker never
+     waits on the network before appearing. */
+  const loadLinear = async () => {
+    const key = `linear:${cwd}`;
+    const cached = readCache({ context, key });
+    if (cached) {
+      issueRows = cached.rows;
+      issueNote = `$(history) as of ${describeAge(cached.at, Date.now())}`;
+      refresh();
+    }
+
+    if (!(await linearToken(context))) {
+      issueRows = [];
+      issueNote = "$(key) Sign in to Linear to list your issues";
+      refresh();
+      return;
+    }
+
+    const mine = ++generation;
+    picker.busy = true;
+    try {
+      const issues = await fetchMyIssues(context);
+      if (mine !== generation) return;
+      const rows: CachedRow[] = issues.map((issue) => ({
+        identifier: issue.identifier,
+        title: issue.title,
+        state: issue.state.name,
+        branch: issue.branchName,
+      }));
+      issueRows = rows;
+      issueNote = rows.length ? "" : "$(inbox) No open issues assigned to you";
+      await writeCache({ context, key, rows });
+      refresh();
+    } catch (error) {
+      if (mine !== generation) return;
+      /* Never a blank list: an empty picker reads as "nothing assigned to you", which is a
+         different claim from "the credential is wrong". */
+      issueNote = `$(warning) ${error instanceof LinearError ? error.message : String(error)}${
+        issueRows.length ? " — showing cached" : ""
+      }`;
+      refresh();
+    } finally {
+      if (mine === generation) picker.busy = false;
+    }
   };
 
   const applyContext = (next: PickerContext) => {
@@ -285,6 +377,7 @@ const showSwitcher = async ({
     picker.title = entry?.tooltip;
     picker.buttons = stripFor(next);
     refresh();
+    if (next === "linear") void loadLinear();
   };
 
   picker.onDidTriggerButton((button) => {
@@ -355,6 +448,22 @@ const showSwitcher = async ({
         worktrees,
         branchSeed: seed || undefined,
       });
+      return;
+    }
+    if (isIssueItem(selected)) {
+      const branch = selected.issueBranch;
+      const match = worktrees.find((worktree) => worktree.branch === branch);
+      picker.dispose();
+      if (match) {
+        vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(match.path), {
+          forceReuseWindow: true,
+        });
+        return;
+      }
+      /* Creates through the ordinary flow with the branch pre-filled — taken from Linear's own
+         branchName VERBATIM, never rebuilt from a slug, because that string is what Linear matches
+         branches and PRs against. */
+      void createWorktree({ context, gitCwd: mainPath, worktrees, branchSeed: branch });
       return;
     }
     if (!isWorktreeItem(selected)) return;
@@ -528,6 +637,11 @@ export const activate = async (context: vscode.ExtensionContext) => {
 
   const resolved = await withCurrentWorktree({ root, announce: false });
   if (!resolved) return;
+
+  /* Registered once, at activation: signing out must clear what the credential fetched, in the
+     same act. A revoked key with the rows it filled still in state.vscdb is the failure the
+     retention rule exists to prevent. */
+  onSignOut(() => clearCache(context));
 
   await publishLinearEnabled();
   context.subscriptions.push(

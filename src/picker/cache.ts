@@ -1,3 +1,4 @@
+import type * as vscode from "vscode";
 import type { Worktree } from "../worktree";
 
 /* The join is DERIVED, never stored, and the cache is the only thing persisted. They live in one
@@ -50,4 +51,54 @@ export const reuseItems = <T extends { branch: string }>({
     Object.assign(existing, item);
     return existing;
   });
+};
+
+/* Stale-while-revalidate for the list contexts. Holds only what a ROW needs — identifier, title,
+   state name, branch — never issue bodies or comments. That boundary is deliberate: globalState is
+   plaintext in state.vscdb and is shared across remote hosts at the same repo path, and ticket
+   bodies here carry personal data. A row's title is already visible in the picker; a
+   description is a different exposure. */
+
+const CACHE_KEY = "picker.listCache";
+
+export type CachedRow = {
+  identifier: string;
+  title: string;
+  state: string;
+  branch: string;
+};
+
+type Cached = { at: number; rows: CachedRow[] };
+
+type Store = Record<string, Cached>;
+
+export const readCache = ({ context, key }: { context: vscode.ExtensionContext; key: string }) =>
+  context.globalState.get<Store>(CACHE_KEY, {})[key];
+
+export const writeCache = async ({
+  context,
+  key,
+  rows,
+}: {
+  context: vscode.ExtensionContext;
+  key: string;
+  rows: CachedRow[];
+}) => {
+  const store = { ...context.globalState.get<Store>(CACHE_KEY, {}) };
+  store[key] = { at: Date.now(), rows };
+  await context.globalState.update(CACHE_KEY, store);
+};
+
+/* Cleared on sign-out in the same act as the credential — see linear/auth.ts. */
+export const clearCache = (context: vscode.ExtensionContext) =>
+  context.globalState.update(CACHE_KEY, undefined);
+
+/* Renders "as of 4 minutes ago" rather than letting `busy` stand in for freshness. `busy` conflates
+   "loading" with "unverified", so a warm cache whose refetch failed would otherwise read as fresh. */
+export const describeAge = (at: number, now: number) => {
+  const minutes = Math.floor((now - at) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours}h ago` : `${Math.floor(hours / 24)}d ago`;
 };

@@ -161,6 +161,27 @@ Merging the three into one list fails for a second, independent reason: they are
 one active ticket would occupy three rows. Contexts turn that from a dedup problem into a per-row
 badge inside a single-source list.
 
+### The Linear context
+
+Lists the open issues assigned to you. A row carries `✓` when a worktree already exists for its
+branch — selecting it switches — and `○` when one does not, where selecting it creates one with the
+branch pre-filled.
+
+The branch name is taken from Linear's `branchName` **verbatim** and never rebuilt from a slug: that
+exact string is what Linear matches branches and PRs against, so regenerating it silently breaks the
+link the whole feature depends on.
+
+First paint comes from cache, so the context does not wait on the network, and a stale list says
+`as of 12m ago` rather than pretending to be fresh. A failed refetch keeps the cached rows and says
+so. An empty list is never used to mean "something went wrong" — a wrong credential says so in
+words, because "no issues assigned to you" is a different claim.
+
+⚠️ **The cache holds identifiers, titles, states and branch names — never issue bodies or
+comments.** `globalState` is plaintext in `state.vscdb` and is shared across remote hosts at the same
+repo path, and ticket bodies here carry personal data. A title is already visible in the
+picker; a description is a different exposure. Signing out deletes the cache in the same act as the
+credential.
+
 ⚠️ **No extension has shipped in-session QuickPick tabs**, so there is no reference implementation
 and no worn path through the edge cases. If `alt+1/2/3` turns out not to fire — on macOS `alt` is
 Option, and Option+digit emits a literal character — the strip's mouse toggles still work and each

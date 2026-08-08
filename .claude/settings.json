@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "aistos": {
+      "source": { "source": "github", "repo": "aistos-tech/claude-standards" }
+    }
+  },
+  "enabledPlugins": {
+    "aistos-dev@aistos": true
+  }
+}

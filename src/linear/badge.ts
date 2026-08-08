@@ -81,8 +81,20 @@ export const openIssue = async (identifier: string) => {
    which is already a MarkdownString. */
 export const badgeFor = (identifier: string | undefined) => (identifier ? ` · ${identifier}` : "");
 
+/* ALWAYS the https form here, never the `linear://` deep link, and never with `isTrusted`.
+
+   A MarkdownString rendered with `isTrusted` executes `command:` URIs, and this tooltip
+   interpolates a BRANCH NAME — free text that git barely constrains, and that arrives from a PR's
+   headRefName in the picker contexts. A branch called `x](command:workbench.action.terminal.new)`
+   would render an executable link in the status bar. So the tooltip stays untrusted, which also
+   means only well-known schemes render: `linear://` would be dropped, and the openIn preference is
+   honoured by the openIssue COMMAND instead, where it costs nothing.
+
+   The identifier is additionally safe by construction — it has already been through the
+   `[a-z]{1,5}-\d+` pattern or the same-shaped bind validation, so it cannot carry markdown. */
 export const tooltipLinkFor = (identifier: string | undefined) => {
   const workspace = linearWorkspace();
   if (!identifier || !workspace) return "";
-  return `\n\n[${identifier}](${issueUrl({ identifier, workspace, openIn: openIn() })})`;
+  const url = issueUrl({ identifier, workspace, openIn: "browser" });
+  return `\n\n[${identifier}](${url})`;
 };

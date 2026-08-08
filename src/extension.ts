@@ -73,12 +73,13 @@ const renderStatus = ({ item, worktree, colour, identifier }: RenderStatusProps)
   const name = basename(worktree.path);
   item.text = `$(git-branch) ${name}${badgeFor(identifier)}`;
   item.color = colour;
-  const tooltip = new vscode.MarkdownString(
+  /* NOT trusted. An `isTrusted` MarkdownString executes `command:` URIs, and this interpolates a
+     branch name — free text that git barely constrains — so a branch named
+     `x](command:some.command)` would render an executable link in the status bar. Ordinary https
+     links are clickable without it, so trusting buys nothing and costs that. */
+  item.tooltip = new vscode.MarkdownString(
     `**${name}** · \`${worktree.branch}\`\n\n${worktree.path}\n\nColour \`${colour}\`${tooltipLinkFor(identifier)}`,
   );
-  /* The tooltip carries a link now, so it has to be trusted for the link to be clickable. */
-  tooltip.isTrusted = true;
-  item.tooltip = tooltip;
   item.command = SWITCH_COMMAND;
   item.show();
 };

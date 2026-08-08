@@ -69,3 +69,21 @@ describe("issueUrl", () => {
     );
   });
 });
+
+/* Regression: the status bar tooltip is a MarkdownString that interpolates the branch name, and an
+   `isTrusted` one executes `command:` URIs. The tooltip is no longer trusted — these pin the other
+   half, that an identifier can never itself carry markdown or a scheme. */
+describe("identifiers cannot carry markup", () => {
+  test("rejects a branch trying to inject a markdown link", () => {
+    expect(idFor("x](command:workbench.action.terminal.new)")).toBeUndefined();
+  });
+
+  test("rejects a branch whose segment only looks like an identifier", () => {
+    expect(idFor("a-1661](command:evil)")).toBeUndefined();
+  });
+
+  test("only ever yields KEY-NUMBER", () => {
+    const parsed = idFor("thblt-thlgn/acme-42-import");
+    expect(parsed).toMatch(/^[A-Z]{1,5}-\d+$/);
+  });
+});

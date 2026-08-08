@@ -200,6 +200,27 @@ unconfigured until you sign in there too. That is by design, and it will otherwi
 credential revoked while the ticket bodies it fetched stay on disk is the failure that matters here:
 issue text in this workspace carries personal data.
 
+### Moving an issue to started
+
+`worktreeManager.linear.setStartedOnCreate` (default **off**) moves an issue to its team's first
+started status when you create a worktree for it — after the `postCreate` hook exits 0, and before
+the open prompt. A worktree whose bootstrap failed is not one you have started work in.
+
+⚠️ **Only from `triage`, `backlog` or `unstarted`.** This workspace runs *two* started states,
+In Progress and In Review, so an unguarded transition would drag an issue back from In Review every
+time you create a worktree to address review comments — and would reopen a Done one.
+
+⚠️ **Check whether Linear already does this for you before turning it on.** Linear has a
+*Settings → Code & reviews* toggle that moves an issue to started when its branch name is copied
+from the UI, and its GitHub integration has a "move to In Progress when a PR opens" default. If
+either is active for your workspace, this setting duplicates a transition you already get — and the
+rationale for a write-capable credential goes with it. That is one settings check, and it is worth
+doing first.
+
+It defaults to off for the same reason: a write-capable credential is not something a default
+install should acquire on your behalf, and a grant already made cannot be narrowed by turning the
+setting off afterwards.
+
 📌 **OAuth is still the intended default, and is not built yet.** It gives revocation and no
 long-lived credential at rest, which an API key does not. It is deferred because it rests on
 `https://vscode.dev/redirect` forwarding an https callback to a *third-party* `vscode://` URI

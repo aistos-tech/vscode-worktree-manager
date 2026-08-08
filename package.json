@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Worktree Manager",
   "description": "Per-worktree identity and fast switching for git worktrees",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -61,6 +61,12 @@
           "default": "browser",
           "scope": "window",
           "markdownDescription": "Open Linear issues in the browser (`https://`) or the desktop app (`linear://`)."
+        },
+        "worktreeManager.linear.setStartedOnCreate": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "markdownDescription": "Move a Linear issue to its team's first started status when a worktree is created for it — only when the issue is currently in triage, backlog or unstarted, so an issue already In Review is never dragged backwards. Defaults to **off**: it needs a write-capable credential, and that should be a choice you make rather than one a default install makes for you."
         },
         "worktreeManager.linear.teamKeys": {
           "type": "array",

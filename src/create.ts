@@ -3,6 +3,9 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import * as vscode from "vscode";
 import { resolveHook, resolveWorktreesRoot } from "./config";
 import { describeExit, runHook } from "./hooks";
+import { linearToken } from "./linear/auth";
+import { LinearError, moveToStarted } from "./linear/client";
+import { issueIdFor } from "./linear/id";
 import { ensureApproved } from "./trust";
 import {
   addWorktree,
@@ -103,6 +106,40 @@ const recoverFromAddFailure = async ({
   return false;
 };
 
+const SET_STARTED_KEY = "worktreeManager.linear.setStartedOnCreate";
+
+/* Runs only after the hook exits 0, and BEFORE the open prompt — a worktree whose bootstrap failed
+   is not one you have started work in, and saying otherwise on the ticket is worse than saying
+   nothing. Failures here are warnings, never errors: the worktree exists and is bootstrapped, and
+   a ticket left in Backlog is a smaller problem than a create flow that appears to have failed. */
+const markStarted = async ({
+  context,
+  branch,
+}: {
+  context: vscode.ExtensionContext;
+  branch: string;
+}) => {
+  if (!vscode.workspace.getConfiguration().get<boolean>(SET_STARTED_KEY, false)) {
+    return;
+  }
+  const identifier = issueIdFor({ branch });
+  if (!identifier) return;
+  /* Never prompts for a credential here. Sign-in belongs to an explicit action, not to the tail of
+     a create the user is waiting on. */
+  if (!(await linearToken(context))) return;
+
+  try {
+    const result = await moveToStarted({ context, identifier });
+    vscode.window.showInformationMessage(
+      result.moved ? `Moved ${identifier} to started.` : `Left ${identifier} in ${result.state}.`,
+    );
+  } catch (error) {
+    vscode.window.showWarningMessage(
+      `Created the worktree, but could not update ${identifier} — ${error instanceof LinearError ? error.message : String(error)}`,
+    );
+  }
+};
+
 export const createWorktree = async ({ context, gitCwd, worktrees, branchSeed }: CreateProps) => {
   const branch = (await askBranch(branchSeed))?.trim();
   if (!branch) return;
@@ -180,6 +217,8 @@ export const createWorktree = async ({ context, gitCwd, worktrees, branchSeed }:
       return;
     }
   }
+
+  await markStarted({ context, branch });
 
   /* Three-way, not a forced reopen. `forceReuseWindow` tears down the extension host AND the task
      terminal, so it would destroy the hook output the user may still want to read. */

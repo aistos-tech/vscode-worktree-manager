@@ -1,0 +1,15 @@
+name: Guards
+
+# Shared checks, defined once in aistos-tech/.github. Reusable workflows are pull-based, so this
+# caller is the per-repo half — the body it calls is what changes when a check changes.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  secrets:
+    uses: aistos-tech/.github/.github/workflows/gitleaks.yml@main
+  commits:
+    uses: aistos-tech/.github/.github/workflows/commitlint.yml@main

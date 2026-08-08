@@ -1,0 +1,33 @@
+name: CI
+
+# This repo's own checks. Not shared: a VS Code extension builds with bun to a CJS bundle with
+# `vscode` external, which nothing else here does — the shared layer stops at gitleaks and
+# commitlint, which are about git rather than about a stack.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: lint · typecheck · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+
+      # No lockfile is committed, so --frozen-lockfile would fail rather than protect anything.
+      # Worth committing one: without it CI resolves fresh versions and can go red on a dependency
+      # release that touched nothing here.
+      - run: bun install
+
+      - run: bun run lint
+      - run: bun run typecheck
+
+      # Build last: it is the slowest step and the only one whose failure the first two cannot
+      # already explain.
+      - run: bun run build

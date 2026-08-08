@@ -332,6 +332,42 @@ Pins, colours and the last-opened stamps live in `globalState`, which is stored 
 machine and shared across remote hosts — but is partitioned per VS Code **profile**. Using a
 dedicated profile for remote work gives you a separate set of colours.
 
+## Not built yet
+
+Two pieces of the plan this implements are deliberately outstanding, both blocked on something a
+code change cannot settle.
+
+**Linear OAuth.** Sign-in takes a personal API key today. OAuth with PKCE is the intended default —
+it gives revocation and no long-lived credential at rest — and every consumer already reads its
+credential through one function, so it drops in behind that without touching a caller. It is not
+built because it rests on `https://vscode.dev/redirect` forwarding an https callback to a
+**third-party** `vscode://` URI handler. That endpoint is real and VS Code-operated, but it is
+documented only for MCP server auth, and one hands-on report has it refusing a non-Microsoft target.
+Settling it needs a full round trip — register an OAuth app in the workspace, sign in, land back in
+the extension — not a code change.
+
+**The sidebar issue preview.** A persistently-visible webview showing the current worktree's ticket,
+with rendered markdown and authenticated images. It needs a bundled markdown parser (the first
+runtime dependency), a CSP, a nonce, and an image cache with a retention policy covering PII on
+disk. Whether it is worth that is partly answered by a ten-minute check nobody has run: whether
+`WebviewView.show(preserveFocus)` leaves the picker visible. If it does, `→` could scope the sidebar
+to the highlighted row instead, and the popup and the sidebar collapse into one much smaller thing.
+
+## Keybindings
+
+| Key | Command | When |
+|---|---|---|
+| `ctrl+shift+w` | Open the switcher | always |
+| `alt+1` / `alt+2` / `alt+3` | Worktrees / Linear / Pull requests | the picker is open |
+| `→` | Preview the highlighted row's issue | the picker or preview is open, Linear configured, cursor at end of the filter |
+| `ctrl+-` (macOS) | Back, from the preview | the preview is open |
+
+⚠️ `→` and `alt+1/2/3` fire only while a picker of this extension holds focus, and the `→` clause
+additionally reuses two of VS Code's **internal** context keys (`inputFocus`,
+`cursorAtEndOfQuickInputBox`). They are usable in a `when` clause but are not API: if either is
+renamed, `→` starts firing mid-word in the filter box. Degraded, not broken — and worth re-checking
+after a VS Code upgrade.
+
 ## Deliberately not included
 
 **Reading `tasks.json` instead of a settings string.** `${input:}` cannot be filled

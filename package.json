@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Worktree Manager",
   "description": "Per-worktree identity and fast switching for git worktrees",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -61,6 +61,12 @@
           "default": "browser",
           "scope": "window",
           "markdownDescription": "Open Linear issues in the browser (`https://`) or the desktop app (`linear://`)."
+        },
+        "worktreeManager.linear.clientId": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "markdownDescription": "OAuth application client id from `linear.app/settings/api/applications/new`. Set it and sign-in uses OAuth with PKCE; leave it empty and sign-in asks for a personal API key instead.\n\nRegister the redirect URI as exactly `http://127.0.0.1:47823/callback`. A client id is public by design — there is no secret to configure, because PKCE makes one unnecessary and a `.vsix` could not keep one anyway."
         },
         "worktreeManager.linear.setStartedOnCreate": {
           "type": "boolean",

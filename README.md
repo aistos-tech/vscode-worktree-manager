@@ -232,9 +232,39 @@ normally has none, so that is the common case rather than an exception.
 
 ### Signing in
 
-`Worktree: Sign in to Linear` takes a **personal API key** (linear.app → Settings → Security &
-access → Personal API keys). It is stored in `context.secrets`, never in `globalState` — the latter
-is plaintext in `state.vscdb`.
+Two ways, and which one you get depends on whether `worktreeManager.linear.clientId` is set.
+
+**OAuth (preferred).** Create an app at `linear.app/settings/api/applications/new`, register the
+redirect URI as **exactly** `http://127.0.0.1:47823/callback`, and put its client id in the setting.
+`Worktree: Sign in to Linear` then opens your browser, and signing out actually **revokes** the
+authorisation at Linear rather than just forgetting it locally.
+
+There is no client *secret* to configure. PKCE makes one unnecessary, and a `.vsix` is a zip anyone
+can open, so the extension could not safely hold one anyway.
+
+**Personal API key.** Leave the client id empty and sign-in asks for a key instead (linear.app →
+Settings → Security & access → Personal API keys). This is not a degraded mode — OAuth needs an app
+registered in the workspace, which is a step you may reasonably not want to take.
+
+Either way the credential lives in `context.secrets`, never in `globalState`, which is plaintext in
+`state.vscdb`.
+
+📌 **Why a loopback callback rather than `vscode://`.** Linear's own OAuth docs use
+`http://localhost:3000/oauth/callback` as their redirect example, so the ordinary native-app flow
+(RFC 8252) applies: the extension listens on a fixed loopback port for the length of the sign-in and
+closes it immediately afterwards. The alternative — a `vscode://` callback bounced through
+`https://vscode.dev/redirect` — is documented only for MCP server auth and has been reported
+refusing non-Microsoft targets, so it is a dependency worth not having.
+
+⚠️ **Remote-SSH is the case to test.** The extension runs on the remote host, so the callback server
+does too. `asExternalUri` establishes VS Code's port forwarding, but if the forwarded local port is
+not 47823 the redirect will not match what Linear has registered. The API key path works
+unconditionally and is the fallback if that bites.
+
+⚠️ **Scopes follow the setting, not the install.** Sign-in requests `read` only, unless you have
+enabled `setStartedOnCreate`, in which case it requests `write` too. A grant already made cannot be
+narrowed by turning the setting off later, so enabling it re-asks rather than being requested up
+front.
 
 ⚠️ **`SecretStorage` does not sync across machines.** On a second machine Linear is simply
 unconfigured until you sign in there too. That is by design, and it will otherwise read as a bug.
@@ -264,13 +294,8 @@ It defaults to off for the same reason: a write-capable credential is not someth
 install should acquire on your behalf, and a grant already made cannot be narrowed by turning the
 setting off afterwards.
 
-📌 **OAuth is still the intended default, and is not built yet.** It gives revocation and no
-long-lived credential at rest, which an API key does not. It is deferred because it rests on
-`https://vscode.dev/redirect` forwarding an https callback to a *third-party* `vscode://` URI
-handler — documented only for MCP server auth, with one hands-on report of it refusing a
-non-Microsoft target. That needs a real round trip to settle, not a code change. Everything reads
-its credential through one function, so OAuth drops in behind it without touching a caller. What
-must never happen is an embedded client secret: a `.vsix` is a zip anyone can open.
+📌 Everything reads its credential through one function, so the two mechanisms above cost the rest
+of the extension nothing.
 
 ⚠️ **Set `teamKeys` if you want the badge to be trustworthy.** The identifier pattern matches any
 1–5 letters followed by a number, so a branch like `wip-2-something` or `fix-2-broken` produces a
@@ -336,22 +361,6 @@ dedicated profile for remote work gives you a separate set of colours.
 
 Two pieces of the plan this implements are deliberately outstanding, both blocked on something a
 code change cannot settle.
-
-**Linear OAuth.** Sign-in takes a personal API key today. OAuth with PKCE is the intended default —
-it gives revocation and no long-lived credential at rest — and every consumer already reads its
-credential through one function, so it drops in behind that without touching a caller. It is not
-built because it rests on `https://vscode.dev/redirect` forwarding an https callback to a
-**third-party** `vscode://` URI handler. That endpoint is real and VS Code-operated, but it is
-documented only for MCP server auth, and one hands-on report has it refusing a non-Microsoft target.
-Settling it needs a full round trip — register an OAuth app in the workspace, sign in, land back in
-the extension — not a code change.
-
-**The sidebar issue preview.** A persistently-visible webview showing the current worktree's ticket,
-with rendered markdown and authenticated images. It needs a bundled markdown parser (the first
-runtime dependency), a CSP, a nonce, and an image cache with a retention policy covering PII on
-disk. Whether it is worth that is partly answered by a ten-minute check nobody has run: whether
-`WebviewView.show(preserveFocus)` leaves the picker visible. If it does, `→` could scope the sidebar
-to the highlighted row instead, and the popup and the sidebar collapse into one much smaller thing.
 
 ## Keybindings
 

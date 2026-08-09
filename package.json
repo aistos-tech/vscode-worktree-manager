@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Worktree Manager",
   "description": "Per-worktree identity and fast switching for git worktrees",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -98,7 +98,7 @@
           "id": "worktreeManager.issue",
           "name": "Linear Issue",
           "when": "worktreeManager.linearEnabled",
-          "visibility": "collapsed"
+          "visibility": "visible"
         }
       ]
     },
@@ -149,6 +149,18 @@
       {
         "command": "worktreeManager.linear.previewIssue",
         "title": "Worktree: Preview Linear Issue"
+      },
+      {
+        "command": "worktreeManager.linear.showIssue",
+        "title": "Worktree: Show Linear Issue Panel"
+      },
+      {
+        "command": "worktreeManager.nextContext",
+        "title": "Worktree: Next Picker Context"
+      },
+      {
+        "command": "worktreeManager.previousContext",
+        "title": "Worktree: Previous Picker Context"
       },
       {
         "command": "worktreeManager.linear.refreshIssue",
@@ -205,6 +217,16 @@
         "when": "worktreeManager.pickerOpen"
       },
       {
+        "command": "worktreeManager.nextContext",
+        "key": "tab",
+        "when": "worktreeManager.pickerOpen"
+      },
+      {
+        "command": "worktreeManager.previousContext",
+        "key": "shift+tab",
+        "when": "worktreeManager.pickerOpen"
+      },
+      {
         "command": "worktreeManager.linear.previewIssue",
         "key": "right",
         "when": "worktreeManager.linearEnabled && (worktreeManager.pickerOpen || worktreeManager.previewOpen) && (!inputFocus || cursorAtEndOfQuickInputBox)"
@@ -221,6 +243,14 @@
       "commandPalette": [
         {
           "command": "worktreeManager.linear.previewIssue",
+          "when": "false"
+        },
+        {
+          "command": "worktreeManager.nextContext",
+          "when": "false"
+        },
+        {
+          "command": "worktreeManager.previousContext",
           "when": "false"
         }
       ]

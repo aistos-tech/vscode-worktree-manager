@@ -169,9 +169,14 @@ badge inside a single-source list.
 
 ### The Linear context
 
-Lists the open issues assigned to you. A row carries `✓` when a worktree already exists for its
-branch — selecting it switches — and `○` when one does not, where selecting it creates one with the
-branch pre-filled.
+Lists the open issues assigned to you, **the ones you already have a worktree for first**, under a
+`Not checked out` separator. The point of the context is to get you into work, and the cheapest
+version of that is switching to something that already exists — a list that interleaves the three
+you can switch to with the twenty you would have to create buries the cheap action inside the
+expensive one. Within each group the server's order is preserved (Linear by `updatedAt`).
+
+A row carries `✓` when a worktree already exists for its branch — selecting it switches — and `○`
+when one does not, where selecting it creates one with the branch pre-filled.
 
 The branch name is taken from Linear's `branchName` **verbatim** and never rebuilt from a slug: that
 exact string is what Linear matches branches and PRs against, so regenerating it silently breaks the
@@ -190,7 +195,8 @@ credential.
 
 ### The pull request context
 
-Lists what is **waiting on your review**, not every open PR. Measured on this repo:
+Lists what is **waiting on your review**, not every open PR — and, like the Linear context, the ones
+you already have a worktree for come first. Measured on this repo:
 `review-requested:@me` returns 3, all open PRs returns 35 — most of them your own, which is a
 scrolling exercise rather than a queue.
 
@@ -208,9 +214,15 @@ renders PRs in its own sidebar, unaware of worktrees, so it cannot tell you that
 worktree you already have open, or switch you to it.
 
 ⚠️ **No extension has shipped in-session QuickPick tabs**, so there is no reference implementation
-and no worn path through the edge cases. If `alt+1/2/3` turns out not to fire — on macOS `alt` is
-Option, and Option+digit emits a literal character — the strip's mouse toggles still work and each
-context remains its own command, which is what every comparable extension does anyway.
+and no worn path through the edge cases. If the keybindings turn out not to fire, the strip's mouse
+toggles still work and each context remains its own command, which is what every comparable
+extension does anyway.
+
+📌 **On `tab`.** Tab in a quick input also moves DOM focus between the filter box and the list, so
+binding it is a genuine trade — but it *is* dispatched through the normal keybinding layer (VS Code
+binds Tab itself for snippets and suggestions, and quick-open ships its own Tab-family cycling at
+weight 250 with a `when` clause). Extension bindings register at weight 400, so ours wins where its
+`when` matches, and a matched binding suppresses the default focus move.
 
 ⚠️ **A context key that gates an arrow-key binding must never be left set.** `pickerOpen` is
 cleared in `onDidHide`, in a `finally`, and in `deactivate` — three sites, because the picker sets
@@ -319,6 +331,12 @@ committed `bun.lock` and CI's `--frozen-lockfile` keep a local install from drif
 
 ### The issue sidebar
 
+⚠️ **It only exists once `worktreeManager.linear.workspace` is set** — the view's `when` clause is
+that setting, so with it empty there is no panel to find. `Worktree: Show Linear Issue Panel` is the
+way in: it reveals the panel, or tells you what to configure if that is why it is missing.
+
+It lives in the **Source Control** container, so open that view rather than looking in the Explorer.
+
 A `WebviewView` in the Source Control container, showing the ticket for the worktree you are **in** —
 which is what distinguishes it from `→`, which shows whichever row you are pointing at. Description
 and comments both, because a ticket's decisions accumulate in its comments and rendering only the
@@ -398,7 +416,8 @@ code change cannot settle.
 | Key | Command | When |
 |---|---|---|
 | `ctrl+shift+w` | Open the switcher | always |
-| `alt+1` / `alt+2` / `alt+3` | Worktrees / Linear / Pull requests | the picker is open |
+| `tab` / `shift+tab` | Cycle to the next / previous context | the picker is open |
+| `alt+1` / `alt+2` / `alt+3` | Jump straight to Worktrees / Linear / Pull requests | the picker is open |
 | `→` | Preview the highlighted row's issue | the picker or preview is open, Linear configured, cursor at end of the filter |
 | `ctrl+-` (macOS) | Back, from the preview | the preview is open |
 

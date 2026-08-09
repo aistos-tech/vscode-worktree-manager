@@ -15,6 +15,7 @@ import {
   badgeFor,
   bindIssue,
   identifierFor,
+  linearWorkspace,
   openIssue,
   publishLinearEnabled,
   tooltipLinkFor,
@@ -27,6 +28,7 @@ import { deleteWorktree, renameWorktree } from "./manage";
 import { type CachedRow, clearCache, describeAge, readCache, writeCache } from "./picker/cache";
 import { enterPicker, exitAll, exitPicker } from "./picker/context-keys";
 import { errorNote, type Note, type NoteAction, noteRow, signInNote } from "./picker/notes";
+import { byLocalFirst, localSplitIndex } from "./picker/order";
 import {
   ensureColours,
   type OpenedMap,
@@ -50,6 +52,9 @@ const SIGN_IN_COMMAND = "worktreeManager.linear.signIn";
 const SIGN_OUT_COMMAND = "worktreeManager.linear.signOut";
 const PREVIEW_ISSUE_COMMAND = "worktreeManager.linear.previewIssue";
 const REFRESH_ISSUE_COMMAND = "worktreeManager.linear.refreshIssue";
+const SHOW_ISSUE_COMMAND = "worktreeManager.linear.showIssue";
+const NEXT_CONTEXT_COMMAND = "worktreeManager.nextContext";
+const PREVIOUS_CONTEXT_COMMAND = "worktreeManager.previousContext";
 const OPEN_ISSUE_COMMAND = "worktreeManager.linear.openIssue";
 const BIND_ISSUE_COMMAND = "worktreeManager.linear.bindIssue";
 const FORGET_APPROVAL_COMMAND = "worktreeManager.hooks.forget";
@@ -185,20 +190,31 @@ const isIssueItem = (item: vscode.QuickPickItem): item is IssueItem => "issueBra
 /* Existence is a per-row badge inside a single-source list, which is exactly what contexts buy:
    `✓` means a worktree already exists for this branch and selecting it switches, `○` means it does
    not and selecting it creates one. */
-const issueItem = ({
-  row,
-  worktrees,
-}: {
-  row: CachedRow;
-  worktrees: readonly Worktree[];
-}): IssueItem => {
-  const existing = worktrees.some((worktree) => worktree.branch === row.branch);
-  return {
-    label: `${existing ? "$(check)" : "$(circle-outline)"} ${row.identifier} ${row.title}`,
-    description: row.state,
-    detail: existing ? undefined : `Creates a worktree on ${row.branch}`,
-    issueBranch: row.branch,
-  };
+const issueItem = (row: CachedRow & { local: boolean }): IssueItem => ({
+  label: `${row.local ? "$(check)" : "$(circle-outline)"} ${row.identifier} ${row.title}`,
+  description: row.state,
+  detail: row.local ? undefined : `Creates a worktree on ${row.branch}`,
+  issueBranch: row.branch,
+});
+
+/* Splits the two groups with a separator, so "the ones you already have" reads as a grouping rather
+   than as an accident of ordering. Nothing is inserted when either group is empty. */
+const withLocalSeparator = <T extends { local: boolean }>(
+  ordered: readonly T[],
+  toItem: (row: T) => vscode.QuickPickItem,
+): vscode.QuickPickItem[] => {
+  const split = localSplitIndex(ordered);
+  return ordered.flatMap((row, index) =>
+    index === split
+      ? [
+          {
+            label: "Not checked out",
+            kind: vscode.QuickPickItemKind.Separator,
+          },
+          toItem(row),
+        ]
+      : [toItem(row)],
+  );
 };
 
 type NoteItem = vscode.QuickPickItem & { noteAction: NoteAction };
@@ -307,13 +323,20 @@ const showSwitcher = async ({
        identity, so a fresh object with an identical label does not restore the highlight. */
     const wasActive = picker.activeItems;
     picker.items = [
-      /* Only the worktrees context has a source behind it in this commit. The other two paint an
-         explicit "not built yet" row rather than an empty list, because an empty QuickPick reads as
-         a failed query. */
+      /* Every context paints a row rather than an empty list when it has nothing: an empty
+         QuickPick reads as a failed query. */
       ...(active === "linear"
         ? [
             ...(issueNote ? [noteRow(issueNote)] : []),
-            ...issueRows.map((row) => issueItem({ row, worktrees })),
+            ...withLocalSeparator(
+              byLocalFirst(
+                issueRows.map((row) => ({
+                  ...row,
+                  local: worktrees.some((worktree) => worktree.branch === row.branch),
+                })),
+              ),
+              (row) => issueItem(row),
+            ),
           ]
         : []),
       ...(active === "worktrees"
@@ -331,18 +354,23 @@ const showSwitcher = async ({
       ...(active === "prs"
         ? [
             ...(prNote ? [noteRow(prNote)] : []),
-            ...prRows.map((row) => {
-              const existing = worktrees.some((worktree) => worktree.branch === row.branch);
-              return {
-                label: `${existing ? "$(check)" : "$(circle-outline)"} #${row.number} ${row.title}`,
+            ...withLocalSeparator(
+              byLocalFirst(
+                prRows.map((row) => ({
+                  ...row,
+                  local: worktrees.some((worktree) => worktree.branch === row.branch),
+                })),
+              ),
+              (row) => ({
+                label: `${row.local ? "$(check)" : "$(circle-outline)"} #${row.number} ${row.title}`,
                 description: row.branch,
-                detail: existing
+                detail: row.local
                   ? undefined
                   : "Opens the PR — checkout is the GitHub extension's job",
                 prBranch: row.branch,
                 prUrl: row.url,
-              };
-            }),
+              }),
+            ),
           ]
         : []),
     ];
@@ -598,6 +626,7 @@ const showSwitcher = async ({
     if (handingOverToPreview) return;
     try {
       activePreviewTrigger = undefined;
+      activeContextCycler = undefined;
       void exitAll();
     } finally {
       picker.dispose();
@@ -642,6 +671,13 @@ const showSwitcher = async ({
   };
 
   activePreviewTrigger = preview;
+  /* Cycling rather than three absolute keys: Tab/Shift+Tab is how every other tab strip works, and
+     it needs no digit to be free. alt+1/2/3 stays for jumping straight to one. */
+  activeContextCycler = (step) => {
+    const index = CONTEXTS.findIndex((entry) => entry.id === active);
+    const next = CONTEXTS[(index + step + CONTEXTS.length) % CONTEXTS.length];
+    if (next) applyContext(next.id);
+  };
 
   picker.show();
   /* AFTER show(), not before: show() fires any other input UI's onDidHide, whose handler would
@@ -653,6 +689,7 @@ const showSwitcher = async ({
    reference — there is no way to pass the active row as a keybinding argument, and there are two
    surfaces. Nulled on hide so the command no-ops instead of touching a disposed object. */
 let activePreviewTrigger: (() => Promise<void>) | undefined;
+let activeContextCycler: ((step: number) => void) | undefined;
 
 type CurrentWorktreeProps = {
   root: string;
@@ -733,6 +770,8 @@ export const activate = async (context: vscode.ExtensionContext) => {
       }
     }),
     vscode.commands.registerCommand(PREVIEW_ISSUE_COMMAND, () => activePreviewTrigger?.()),
+    vscode.commands.registerCommand(NEXT_CONTEXT_COMMAND, () => activeContextCycler?.(1)),
+    vscode.commands.registerCommand(PREVIOUS_CONTEXT_COMMAND, () => activeContextCycler?.(-1)),
     vscode.commands.registerCommand(SIGN_IN_COMMAND, async () => {
       const token = await signIn(context);
       if (token) vscode.window.showInformationMessage("Signed in to Linear.");
@@ -845,6 +884,27 @@ export const activate = async (context: vscode.ExtensionContext) => {
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(ISSUE_VIEW_ID, issueView),
     vscode.commands.registerCommand(REFRESH_ISSUE_COMMAND, () => issueView.refresh()),
+    /* The view is collapsed-by-default inside Source Control, which makes it easy to miss entirely.
+       An explicit command is the discoverable way in, and it focuses the container first because
+       revealing a view inside a hidden container does nothing visible. */
+    vscode.commands.registerCommand(SHOW_ISSUE_COMMAND, async () => {
+      if (!linearWorkspace()) {
+        const answer = await vscode.window.showWarningMessage(
+          "Set worktreeManager.linear.workspace to your Linear workspace slug — the panel cannot appear without it.",
+          "Open settings",
+        );
+        if (answer) {
+          await vscode.commands.executeCommand(
+            "workbench.action.openSettings",
+            "worktreeManager.linear.workspace",
+          );
+        }
+        return;
+      }
+      await vscode.commands.executeCommand("workbench.view.scm");
+      issueView.reveal();
+      await issueView.refresh();
+    }),
     /* Refetch on focus, so a ticket updated in the browser is not stale in the panel — and so the
        signed image URLs are reminted before the old ones expire. */
     vscode.window.onDidChangeWindowState((state) => {

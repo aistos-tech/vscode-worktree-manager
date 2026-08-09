@@ -245,9 +245,10 @@ authorisation at Linear rather than just forgetting it locally.
 There is no client *secret* to configure. PKCE makes one unnecessary, and a `.vsix` is a zip anyone
 can open, so the extension could not safely hold one anyway.
 
-**Personal API key.** Leave the client id empty and sign-in asks for a key instead (linear.app →
-Settings → Security & access → Personal API keys). This is not a degraded mode — OAuth needs an app
-registered in the workspace, which is a step you may reasonably not want to take.
+**Personal API key.** Leave the client id empty and sign-in *asks which you want* — a key now, or
+help setting up OAuth (it opens the app-registration page and the setting, and tells you the exact
+redirect URI to paste). This is not a degraded mode: OAuth needs an app registered in the workspace,
+which is a step you may reasonably not want to take.
 
 Either way the credential lives in `context.secrets`, never in `globalState`, which is plaintext in
 `state.vscdb`.

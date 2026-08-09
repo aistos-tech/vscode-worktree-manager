@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { refreshTokens, revokeToken, runOAuthFlow } from "./oauth";
+import { redirectUri } from "./pkce";
 
 const TOKEN_KEY = "linear.token";
 const TOKENS_KEY = "linear.tokens";
@@ -108,9 +109,53 @@ const signInWithOAuth = async (context: vscode.ExtensionContext, clientId: strin
   return tokens.accessToken;
 };
 
+const SETUP_URL = "https://linear.app/settings/api/applications/new";
+
+/* Asked rather than assumed. Without a client id the only thing that CAN happen is the key path,
+   and silently doing that leaves someone who came looking for OAuth staring at a password box with
+   no hint that OAuth exists, that it needs a one-time app registration, or where to do it. */
+const chooseMechanism = async () => {
+  const picked = await vscode.window.showQuickPick(
+    [
+      {
+        label: "$(key) Use a personal API key",
+        detail: "Works immediately. linear.app → Settings → Security & access → Personal API keys",
+        choice: "key" as const,
+      },
+      {
+        label: "$(shield) Set up OAuth instead",
+        detail: `Opens ${SETUP_URL}. Register the redirect URI as ${redirectUri()}, then put the client id in worktreeManager.linear.clientId. Signing out then revokes at Linear.`,
+        choice: "oauth" as const,
+      },
+    ],
+    {
+      title: "Sign in to Linear",
+      placeHolder: "No OAuth client id is configured yet",
+      ignoreFocusOut: true,
+    },
+  );
+  return picked?.choice;
+};
+
 export const signIn = async (context: vscode.ExtensionContext) => {
   const clientId = linearClientId();
-  if (!clientId) return signInWithKey(context);
+  if (!clientId) {
+    const choice = await chooseMechanism();
+    if (choice === undefined) return undefined;
+    if (choice === "key") return signInWithKey(context);
+    /* Opens both halves of the setup: the page that mints the client id, and the setting that
+       receives it. Nothing to store yet, so this returns without a credential — deliberately, as
+       the next sign-in is the one that succeeds. */
+    await vscode.env.openExternal(vscode.Uri.parse(SETUP_URL));
+    await vscode.commands.executeCommand(
+      "workbench.action.openSettings",
+      "worktreeManager.linear.clientId",
+    );
+    vscode.window.showInformationMessage(
+      `Register the redirect URI as exactly ${redirectUri()}, paste the client id into the setting, then run "Worktree: Sign in to Linear" again.`,
+    );
+    return undefined;
+  }
   try {
     return await signInWithOAuth(context, clientId);
   } catch (error) {

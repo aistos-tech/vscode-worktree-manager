@@ -26,6 +26,7 @@ import { createIssueView, ISSUE_VIEW_ID } from "./linear/view";
 import { deleteWorktree, renameWorktree } from "./manage";
 import { type CachedRow, clearCache, describeAge, readCache, writeCache } from "./picker/cache";
 import { enterPicker, exitAll, exitPicker } from "./picker/context-keys";
+import { errorNote, type Note, type NoteAction, noteRow, signInNote } from "./picker/notes";
 import {
   ensureColours,
   type OpenedMap,
@@ -200,25 +201,25 @@ const issueItem = ({
   };
 };
 
-type CreateItem = vscode.QuickPickItem & { create: true };
-
-const isCreateItem = (item: vscode.QuickPickItem): item is CreateItem => "create" in item;
+type NoteItem = vscode.QuickPickItem & { noteAction: NoteAction };
 
 /* The label embeds the typed text verbatim, which is what keeps the row visible while filtering:
    fuzzy matching needs the query's characters in order, and they are literally present. A static
-   "New worktree…" row is hidden by the filter at exactly the moment it is wanted — you type a
-   branch name that matches no existing worktree, and the one row that could act on it disappears. */
+   "New worktree…" row is hidden by the filter at exactly the moment it is wanted. */
 const createItem = (query: string): CreateItem => ({
   label: query ? `$(add) Create worktree "${query}"` : "$(add) New worktree…",
   alwaysShow: true,
   create: true,
 });
 
-/* Three contexts over one picker. Only `worktrees` has a source behind it here — deliberately, so
-   the mechanism is proven on the instant, offline, credential-free case before either network
-   context is built on it. If the keybinding half turns out not to work on macOS, what is left is
-   three separately-keybound commands, which is what every shipping extension in this space does
-   anyway; nothing built is wasted. */
+const isNoteItem = (item: vscode.QuickPickItem): item is NoteItem => "noteAction" in item;
+
+type CreateItem = vscode.QuickPickItem & { create: true };
+
+const isCreateItem = (item: vscode.QuickPickItem): item is CreateItem => "create" in item;
+
+/* Three contexts over one picker. The mechanism was proven on the instant, offline,
+   credential-free case before either network context was built on top of it. */
 export type PickerContext = "worktrees" | "linear" | "prs";
 
 const CONTEXTS: {
@@ -281,9 +282,9 @@ const showSwitcher = async ({
 
   let active: PickerContext = initialContext;
   let issueRows: CachedRow[] = [];
-  let issueNote = "";
+  let issueNote: Note | undefined;
   let prRows: { number: number; title: string; branch: string; url: string }[] = [];
-  let prNote = "";
+  let prNote: Note | undefined;
   /* Drops a response that lands after a newer one. VS Code does not debounce and a slow reply can
      arrive after the context has already changed, painting the wrong list. */
   let generation = 0;
@@ -311,14 +312,7 @@ const showSwitcher = async ({
          a failed query. */
       ...(active === "linear"
         ? [
-            ...(issueNote
-              ? [
-                  {
-                    label: issueNote,
-                    alwaysShow: true,
-                  },
-                ]
-              : []),
+            ...(issueNote ? [noteRow(issueNote)] : []),
             ...issueRows.map((row) => issueItem({ row, worktrees })),
           ]
         : []),
@@ -336,7 +330,7 @@ const showSwitcher = async ({
         : []),
       ...(active === "prs"
         ? [
-            ...(prNote ? [{ label: prNote, alwaysShow: true }] : []),
+            ...(prNote ? [noteRow(prNote)] : []),
             ...prRows.map((row) => {
               const existing = worktrees.some((worktree) => worktree.branch === row.branch);
               return {
@@ -363,13 +357,13 @@ const showSwitcher = async ({
     const cached = readCache({ context, key });
     if (cached) {
       issueRows = cached.rows;
-      issueNote = `$(history) as of ${describeAge(cached.at, Date.now())}`;
+      issueNote = { label: `$(history) as of ${describeAge(cached.at, Date.now())}` };
       refresh();
     }
 
     if (!(await linearToken(context))) {
       issueRows = [];
-      issueNote = "$(key) Sign in to Linear to list your issues";
+      issueNote = signInNote("linear");
       refresh();
       return;
     }
@@ -386,16 +380,20 @@ const showSwitcher = async ({
         branch: issue.branchName,
       }));
       issueRows = rows;
-      issueNote = rows.length ? "" : "$(inbox) No open issues assigned to you";
+      issueNote = rows.length ? undefined : { label: "$(inbox) No open issues assigned to you" };
       await writeCache({ context, key, rows });
       refresh();
     } catch (error) {
       if (mine !== generation) return;
       /* Never a blank list: an empty picker reads as "nothing assigned to you", which is a
          different claim from "the credential is wrong". */
-      issueNote = `$(warning) ${error instanceof LinearError ? error.message : String(error)}${
-        issueRows.length ? " — showing cached" : ""
-      }`;
+      issueNote = errorNote({
+        message: `${error instanceof LinearError ? error.message : String(error)}${
+          issueRows.length ? " — showing cached" : ""
+        }`,
+        provider: "linear",
+        recoverable: error instanceof LinearError,
+      });
       refresh();
     } finally {
       if (mine === generation) picker.busy = false;
@@ -405,12 +403,18 @@ const showSwitcher = async ({
   const loadPrs = async () => {
     const remote = parseRemote(await originUrl(cwd));
     if (!remote) {
-      prNote = "$(warning) No GitHub remote on this repo";
+      /* Not recoverable by signing in — offering it would send the user through an auth flow
+         and leave them exactly where they were. */
+      prNote = errorNote({
+        message: "No GitHub remote on this repo",
+        provider: "github",
+        recoverable: false,
+      });
       refresh();
       return;
     }
     if (!(await hasGitHubSession())) {
-      prNote = "$(key) Sign in to GitHub to list pull requests";
+      prNote = signInNote("github");
       refresh();
       return;
     }
@@ -425,11 +429,15 @@ const showSwitcher = async ({
         branch: pr.headRefName,
         url: pr.url,
       }));
-      prNote = prRows.length ? "" : "$(inbox) Nothing is waiting on your review";
+      prNote = prRows.length ? undefined : { label: "$(inbox) Nothing is waiting on your review" };
       refresh();
     } catch (error) {
       if (mine !== generation) return;
-      prNote = `$(warning) ${error instanceof GitHubError ? error.message : String(error)}`;
+      prNote = errorNote({
+        message: error instanceof GitHubError ? error.message : String(error),
+        provider: "github",
+        recoverable: error instanceof GitHubError,
+      });
       refresh();
     } finally {
       if (mine === generation) picker.busy = false;
@@ -517,6 +525,29 @@ const showSwitcher = async ({
       });
       return;
     }
+    /* The rows that offer an action. Handled BEFORE the item-type checks below, because a note is
+       not a worktree, an issue or a PR and would otherwise fall through all of them — which is
+       exactly the bug that made these rows inert. Signing in re-runs the load, so the list fills in
+       without the user reopening the picker. */
+    if (isNoteItem(selected)) {
+      const action = selected.noteAction;
+      if (action === "signInLinear") {
+        void (async () => {
+          const token = await signIn(context);
+          if (token) await loadLinear();
+        })();
+        return;
+      }
+      if (action === "signInGitHub") {
+        void (async () => {
+          if (await signInToGitHub()) await loadPrs();
+        })();
+        return;
+      }
+      void (active === "linear" ? loadLinear() : loadPrs());
+      return;
+    }
+
     /* Read-only, deliberately. PR worktree CREATION is composed, not built: the GitHub PR
        extension already ships "Checkout Pull Request in Worktree", and re-implementing it here
        would duplicate a free, maintained feature. What nothing else provides is the join — knowing

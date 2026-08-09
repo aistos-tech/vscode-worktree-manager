@@ -21,18 +21,31 @@ type QueryProps = {
   context: vscode.ExtensionContext;
   query: string;
   variables?: Record<string, unknown>;
+  /* Seconds. Set it and EVERY file URL in the response comes back signed, working with no
+     Authorization header — which is what lets a webview load ticket images directly instead of the
+     extension proxying every one of them through a cache on disk. */
+  signFileUrlsFor?: number;
 };
 
 /* Every failure surfaces its reason. It never degrades to a silently empty result — a 401, an
    expired key and "no issues assigned to you" are three different things, and collapsing them into
    an empty list makes a credential problem look like an empty backlog. */
-const request = async <T>({ context, query, variables }: QueryProps): Promise<T> => {
+const request = async <T>({
+  context,
+  query,
+  variables,
+  signFileUrlsFor,
+}: QueryProps): Promise<T> => {
   const token = await linearToken(context);
   if (!token) throw new LinearError("Not signed in to Linear.");
 
   const response = await fetch(ENDPOINT, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: token },
+    headers: {
+      "content-type": "application/json",
+      authorization: token,
+      ...(signFileUrlsFor ? { "public-file-urls-expire-in": String(signFileUrlsFor) } : {}),
+    },
     body: JSON.stringify({ query, variables }),
   });
 
@@ -140,4 +153,43 @@ export const moveToStarted = async ({
     variables: { id: identifier, stateId: started.id },
   });
   return { moved: true as const, state: issue.state.name };
+};
+
+export type IssueDetail = LinearIssue & {
+  description?: string | null;
+  comments: {
+    nodes: { id: string; body: string; createdAt: string; user?: { displayName: string } | null }[];
+  };
+};
+
+/* Long enough that a panel left open still renders its images, short enough that a URL leaking out
+   of the webview is not a lasting credential. The panel refetches on focus, so every refresh mints
+   fresh signatures — which is exactly why the plan's objection to signed URLs ("they expire in
+   seconds and the panel outlives them") does not apply: the lifetime is ours to choose. */
+export const FILE_URL_TTL_SECONDS = 60 * 60;
+
+/* Description AND comments. A ticket's decisions accumulate in its comments, so rendering only the
+   description shows the stalest part of it. */
+export const fetchIssueDetail = async ({
+  context,
+  identifier,
+}: {
+  context: vscode.ExtensionContext;
+  identifier: string;
+}) => {
+  const data = await request<{ issue: IssueDetail | null }>({
+    context,
+    signFileUrlsFor: FILE_URL_TTL_SECONDS,
+    query: `query IssueDetail($id: String!) {
+      issue(id: $id) {
+        ${ISSUE_FIELDS}
+        description
+        comments(first: 50) {
+          nodes { id body createdAt user { displayName } }
+        }
+      }
+    }`,
+    variables: { id: identifier },
+  });
+  return data.issue ?? undefined;
 };

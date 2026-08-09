@@ -39,6 +39,9 @@ Per-worktree identity and fast switching for git worktrees in VS Code.
   local, ~15 ms), Linear issues, and pull requests awaiting your review. `alt+1` / `alt+2` / `alt+3`
   switch while the picker holds focus, and each context is also its own command so it can be bound
   to open straight onto that tab.
+- **Issue sidebar** — a panel in the Source Control view showing the **current** worktree's Linear
+  issue: description and comments, rendered as markdown, with images. Refreshes on window focus and
+  from the `$(refresh)` button. Appears only once `linear.workspace` is set.
 - **Preview a row's issue (→)** — highlight any row in the picker and press **RightArrow**. The
   picker is replaced by a popup showing that branch's Linear issue; the platform Back binding
   (`ctrl+-` on macOS) or Escape returns you to the list with the same row still highlighted.
@@ -312,6 +315,33 @@ excluded outright, not merely stale.
 resolved 1.104 → 1.125, so post-floor APIs typechecked cleanly and would have thrown at runtime on
 the version the manifest claimed to support. The pin makes the compiler enforce the floor; the
 committed `bun.lock` and CI's `--frozen-lockfile` keep a local install from drifting away from it.
+
+### The issue sidebar
+
+A `WebviewView` in the Source Control container, showing the ticket for the worktree you are **in** —
+which is what distinguishes it from `→`, which shows whichever row you are pointing at. Description
+and comments both, because a ticket's decisions accumulate in its comments and rendering only the
+description shows the stalest part of it.
+
+Markdown is rendered by **VS Code's own renderer**, through the `markdown.api.render` command the
+built-in markdown extension exposes. So ticket bodies look exactly like a markdown preview, including
+any markdown-it plugins you have installed — and the extension bundles no markdown parser, which
+keeps it dependency-free.
+
+⚠️ That command is not in the extension-authoring guide, so it is treated as semi-public: if it ever
+disappears, the panel falls back to escaped plain text rather than breaking.
+
+Images load **directly from Linear**, using signed URLs: the GraphQL request sets
+`public-file-urls-expire-in`, and every file URL in the response comes back with a signature that
+works without an `Authorization` header. Nothing is cached on disk — no image cache, no
+`localResourceRoots`, no retention policy, and no ticket data at rest to leak. The panel refetches
+on focus, which remints the signatures.
+
+⚠️ **The CSP is the sanitiser, and it has to be.** Markdown permits raw HTML and a ticket body is
+text written by anyone with workspace access. `default-src 'none'` with `script-src 'none'` means an
+injected `<script>` or `onerror=` cannot execute even though it survives rendering, and `img-src` is
+narrowed to Linear's own storage rather than opened to `https:`, so a body cannot beacon out by
+embedding a remote image.
 
 ### Previewing a row's issue
 

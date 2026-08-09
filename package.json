@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Worktree Manager",
   "description": "Per-worktree identity and fast switching for git worktrees",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -91,6 +91,17 @@
         }
       }
     },
+    "views": {
+      "scm": [
+        {
+          "type": "webview",
+          "id": "worktreeManager.issue",
+          "name": "Linear Issue",
+          "when": "worktreeManager.linearEnabled",
+          "visibility": "collapsed"
+        }
+      ]
+    },
     "taskDefinitions": [
       {
         "type": "worktreeManager.hook",
@@ -138,6 +149,11 @@
       {
         "command": "worktreeManager.linear.previewIssue",
         "title": "Worktree: Preview Linear Issue"
+      },
+      {
+        "command": "worktreeManager.linear.refreshIssue",
+        "title": "Worktree: Refresh Linear Issue",
+        "icon": "$(refresh)"
       },
       {
         "command": "worktreeManager.linear.openIssue",
@@ -195,6 +211,13 @@
       }
     ],
     "menus": {
+      "view/title": [
+        {
+          "command": "worktreeManager.linear.refreshIssue",
+          "when": "view == worktreeManager.issue",
+          "group": "navigation"
+        }
+      ],
       "commandPalette": [
         {
           "command": "worktreeManager.linear.previewIssue",

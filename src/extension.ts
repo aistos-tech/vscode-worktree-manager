@@ -22,6 +22,7 @@ import {
 import { fetchMyIssues, LinearError } from "./linear/client";
 import { issueIdFor } from "./linear/id";
 import { showIssuePreview } from "./linear/preview";
+import { createIssueView, ISSUE_VIEW_ID } from "./linear/view";
 import { deleteWorktree, renameWorktree } from "./manage";
 import { type CachedRow, clearCache, describeAge, readCache, writeCache } from "./picker/cache";
 import { enterPicker, exitAll, exitPicker } from "./picker/context-keys";
@@ -47,6 +48,7 @@ const SHOW_PRS_COMMAND = "worktreeManager.showPRs";
 const SIGN_IN_COMMAND = "worktreeManager.linear.signIn";
 const SIGN_OUT_COMMAND = "worktreeManager.linear.signOut";
 const PREVIEW_ISSUE_COMMAND = "worktreeManager.linear.previewIssue";
+const REFRESH_ISSUE_COMMAND = "worktreeManager.linear.refreshIssue";
 const OPEN_ISSUE_COMMAND = "worktreeManager.linear.openIssue";
 const BIND_ISSUE_COMMAND = "worktreeManager.linear.bindIssue";
 const FORGET_APPROVAL_COMMAND = "worktreeManager.hooks.forget";
@@ -798,6 +800,28 @@ export const activate = async (context: vscode.ExtensionContext) => {
     100,
   );
   item.name = "Worktree";
+  /* The sidebar tracks the CURRENT worktree, which is what distinguishes it from the → popup:
+     the popup shows whichever row you are pointing at, this shows where you are. */
+  const issueView = createIssueView({
+    context,
+    resolveIdentifier: () =>
+      identifierFor({
+        context,
+        worktreeId: resolved.current.id,
+        branch: resolved.current.branch,
+      }),
+  });
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(ISSUE_VIEW_ID, issueView),
+    vscode.commands.registerCommand(REFRESH_ISSUE_COMMAND, () => issueView.refresh()),
+    /* Refetch on focus, so a ticket updated in the browser is not stale in the panel — and so the
+       signed image URLs are reminted before the old ones expire. */
+    vscode.window.onDidChangeWindowState((state) => {
+      if (state.focused) void issueView.refresh();
+    }),
+  );
+  onSignOut(() => issueView.forget());
+
   const render = () =>
     renderStatus({
       item,
@@ -830,6 +854,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
     vscode.commands.registerCommand(BIND_ISSUE_COMMAND, async () => {
       await bindIssue({ context, worktreeId: resolved.current.id });
       render();
+      void issueView.refresh();
     }),
   );
 };

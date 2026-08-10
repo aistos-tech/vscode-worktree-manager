@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Worktree Manager",
   "description": "Per-worktree identity and fast switching for git worktrees",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -148,7 +148,11 @@
       },
       {
         "command": "worktreeManager.linear.previewIssue",
-        "title": "Worktree: Preview Linear Issue"
+        "title": "Worktree: Preview Row"
+      },
+      {
+        "command": "worktreeManager.linear.previewBack",
+        "title": "Worktree: Close Preview"
       },
       {
         "command": "worktreeManager.linear.showIssue",
@@ -227,9 +231,14 @@
         "when": "worktreeManager.pickerOpen"
       },
       {
+        "command": "worktreeManager.linear.previewBack",
+        "key": "left",
+        "when": "worktreeManager.previewOpen"
+      },
+      {
         "command": "worktreeManager.linear.previewIssue",
         "key": "right",
-        "when": "worktreeManager.linearEnabled && (worktreeManager.pickerOpen || worktreeManager.previewOpen) && (!inputFocus || cursorAtEndOfQuickInputBox)"
+        "when": "worktreeManager.pickerOpen && (!inputFocus || cursorAtEndOfQuickInputBox)"
       }
     ],
     "menus": {
@@ -243,6 +252,10 @@
       "commandPalette": [
         {
           "command": "worktreeManager.linear.previewIssue",
+          "when": "false"
+        },
+        {
+          "command": "worktreeManager.linear.previewBack",
           "when": "false"
         },
         {

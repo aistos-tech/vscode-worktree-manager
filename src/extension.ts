@@ -17,7 +17,7 @@ import {
 } from "./linear/badge";
 import { fetchMyIssues, LinearError } from "./linear/client";
 import { issueIdFor } from "./linear/id";
-import { showIssuePreview } from "./linear/preview";
+import { closePreview, showIssuePreview } from "./linear/preview";
 import { createIssueView, ISSUE_VIEW_ID } from "./linear/view";
 import { deleteWorktree, renameWorktree } from "./manage";
 import {
@@ -61,6 +61,7 @@ const SHOW_PRS_COMMAND = "worktreeManager.showPRs";
 const SIGN_IN_COMMAND = "worktreeManager.linear.signIn";
 const SIGN_OUT_COMMAND = "worktreeManager.linear.signOut";
 const PREVIEW_ISSUE_COMMAND = "worktreeManager.linear.previewIssue";
+const PREVIEW_BACK_COMMAND = "worktreeManager.linear.previewBack";
 const REFRESH_ISSUE_COMMAND = "worktreeManager.linear.refreshIssue";
 const SHOW_ISSUE_COMMAND = "worktreeManager.linear.showIssue";
 const NEXT_CONTEXT_COMMAND = "worktreeManager.nextContext";
@@ -712,27 +713,74 @@ const showSwitcher = async ({
   const preview = async () => {
     const [row] = picker.activeItems;
     if (!row) return;
-    const identifier = isWorktreeItem(row)
-      ? identifierFor({
-          context,
-          worktreeId: row.worktree.id,
-          branch: row.worktree.branch,
-        })
+    /* Not the create row, and not a separator or a status line: → on those does nothing. */
+    if (isCreateItem(row) || isNoteItem(row)) return;
+
+    /* Every context resolves to the same shape, which is what makes → mean one thing everywhere:
+       a unit of work that may have a branch, an issue and a PR. */
+    const branch = isWorktreeItem(row)
+      ? row.worktree.branch
       : isIssueItem(row)
-        ? issueIdFor({ branch: row.issueBranch })
+        ? row.issueBranch
         : isPrItem(row)
-          ? issueIdFor({ branch: row.prBranch })
+          ? row.prBranch
           : undefined;
-    /* Not the create row: → on it does nothing. */
-    if (isCreateItem(row)) return;
+    if (branch === undefined) return;
+
+    const worktree = worktrees.find((entry) => entry.branch === branch);
+    const identifier = worktree
+      ? identifierFor({ context, worktreeId: worktree.id, branch })
+      : issueIdFor({ branch });
 
     const restore = picker.activeItems;
     handingOverToPreview = true;
     await exitPicker();
     await showIssuePreview({
       context,
-      identifier,
+      target: {
+        identifier,
+        branch,
+        worktreePath: worktree?.path,
+        worktreeName: worktree ? basename(worktree.path) : undefined,
+        gitCwd: mainPath,
+      },
       onBack: () => {
+        handingOverToPreview = true;
+        picker.show();
+        picker.activeItems = restore;
+        handingOverToPreview = false;
+        void enterPicker();
+      },
+      onAction: (action) => {
+        /* The picker is not reshown for an action: every one of these either replaces the window or
+           opens something outside it, so returning to a list nobody is looking at is noise. */
+        if (action.kind === "openWorktree") {
+          picker.dispose();
+          vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(action.path), {
+            forceReuseWindow: true,
+          });
+          return;
+        }
+        if (action.kind === "createWorktree") {
+          picker.dispose();
+          void createWorktree({
+            context,
+            gitCwd: mainPath,
+            worktrees,
+            branchSeed: action.branch,
+          });
+          return;
+        }
+        if (action.kind === "openLinear") {
+          void openIssue(action.identifier);
+        } else if (action.kind === "openPr") {
+          void vscode.env.openExternal(vscode.Uri.parse(action.url));
+        } else if (action.kind === "signIn") {
+          void signIn(context);
+        } else if (action.kind === "bind" && worktree) {
+          void bindIssue({ context, worktreeId: worktree.id });
+        }
+        /* Back to the list for the actions that left the window where it was. */
         handingOverToPreview = true;
         picker.show();
         picker.activeItems = restore;
@@ -847,6 +895,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
       }
     }),
     vscode.commands.registerCommand(PREVIEW_ISSUE_COMMAND, () => activePreviewTrigger?.()),
+    vscode.commands.registerCommand(PREVIEW_BACK_COMMAND, () => closePreview()),
     vscode.commands.registerCommand(NEXT_CONTEXT_COMMAND, () => activeContextCycler?.(1)),
     vscode.commands.registerCommand(PREVIOUS_CONTEXT_COMMAND, () => activeContextCycler?.(-1)),
     vscode.commands.registerCommand(SIGN_IN_COMMAND, async () => {

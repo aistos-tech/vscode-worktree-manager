@@ -1,132 +1,230 @@
 import * as vscode from "vscode";
+import { fetchPullRequestForBranch } from "../github/client";
+import { parseRemote } from "../github/remote";
 import { enterPreview, exitPreview } from "../picker/context-keys";
+import { originUrl } from "../worktree";
 import { linearToken } from "./auth";
-import { openIssue } from "./badge";
 import { fetchIssue, LinearError } from "./client";
 import { digestFor, escapeIcons } from "./digest";
 
-/* The → popup. A second QuickPick, because it is the only surface that is literally a popup, is
-   instant, keeps focus, and returns you to the list.
+/* The → surface. One view for every context, because a row means the same thing whichever tab you
+   reached it from: a unit of work, which may have a worktree, a Linear issue and a pull request.
+   Showing a different subset per tab would make the gesture's result depend on where you came from.
 
-   Deliberately NOT a body digest. QuickPickItem carries no markdown and `detail` does not wrap — a
-   long line truncates with an ellipsis — so rendering prose here would put a silently-cut sentence
-   one row away from the trash button. Scalar fields only; `Open in Linear` covers the rest. This
-   also keeps the extension free of a markdown parser, which would be its first runtime dependency. */
+   Actions first, then context. The action is why the popup was opened — you pressed → to decide
+   whether to go there — so it should not be below three lines of prose you have to read past.
+
+   Scalar rows only: QuickPickItem carries no markdown and `detail` does not wrap, so a body digest
+   would put a silently ellipsis-truncated sentence one keystroke from the trash button. The sidebar
+   renders the body properly; this answers "is this the thing I think it is". */
+
+export type PreviewTarget = {
+  /* What the row is about. Any of these may be absent — a branch with no issue, an issue with no
+     worktree, a worktree with no PR are all ordinary. */
+  identifier: string | undefined;
+  branch: string | undefined;
+  worktreePath: string | undefined;
+  worktreeName: string | undefined;
+  /* Where git lives, for the PR lookup. */
+  gitCwd: string;
+};
+
+type Action =
+  | { kind: "openWorktree"; path: string }
+  | { kind: "createWorktree"; branch: string }
+  | { kind: "openLinear"; identifier: string }
+  | { kind: "openPr"; url: string }
+  | { kind: "bind" }
+  | { kind: "signIn" };
+
+type Row = vscode.QuickPickItem & { action?: Action };
 
 type PreviewProps = {
   context: vscode.ExtensionContext;
-  identifier: string | undefined;
+  target: PreviewTarget;
   onBack: () => void;
+  onAction: (action: Action) => void;
 };
 
-type Row = vscode.QuickPickItem & { action?: "bind" | "signIn" | "open" };
+const separator = (label: string): Row => ({
+  label,
+  kind: vscode.QuickPickItemKind.Separator,
+});
 
-const rowsForError = (message: string): Row[] => [
-  { label: `$(warning) ${escapeIcons(message)}`, alwaysShow: true },
-];
+const describePrState = (pr: {
+  state: string;
+  isDraft: boolean;
+  reviewDecision: string | undefined;
+}) =>
+  [
+    pr.isDraft ? "draft" : pr.state.toLowerCase(),
+    pr.reviewDecision === "APPROVED"
+      ? "approved"
+      : pr.reviewDecision === "CHANGES_REQUESTED"
+        ? "changes requested"
+        : pr.reviewDecision === "REVIEW_REQUIRED"
+          ? "review required"
+          : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
-export const showIssuePreview = async ({ context, identifier, onBack }: PreviewProps) => {
+/* The row that is always first, and is always an action. "Open" is the verb because that is what
+   pressing Enter does; a row labelled with a worktree name alone reads as a heading. */
+const primaryAction = (target: PreviewTarget): Row => {
+  if (target.worktreePath && target.worktreeName) {
+    return {
+      label: `$(folder-opened) Open worktree ${escapeIcons(target.worktreeName)}`,
+      detail: target.worktreePath,
+      alwaysShow: true,
+      action: { kind: "openWorktree", path: target.worktreePath },
+    };
+  }
+  if (target.branch) {
+    return {
+      label: `$(add) Create worktree for ${escapeIcons(target.branch)}`,
+      detail: "No worktree exists for this branch yet",
+      alwaysShow: true,
+      action: { kind: "createWorktree", branch: target.branch },
+    };
+  }
+  return {
+    label: "$(link) Bind a Linear issue…",
+    detail: "This row has no branch to act on",
+    alwaysShow: true,
+    action: { kind: "bind" },
+  };
+};
+
+/* Held at module scope for the same reason the picker's trigger is: a keybinding cannot carry the
+   surface it should act on, and there is only ever one preview. Cleared on every exit so the
+   command no-ops rather than touching a disposed object. */
+let activePreviewBack: (() => void) | undefined;
+
+export const closePreview = () => activePreviewBack?.();
+
+export const showIssuePreview = async ({ context, target, onBack, onAction }: PreviewProps) => {
   const preview = vscode.window.createQuickPick<Row>();
-  preview.ignoreFocusOut = false;
   preview.busy = true;
+  preview.keepScrollPosition = true;
   preview.buttons = [vscode.QuickInputButtons.Back];
-  preview.title = identifier ?? "Linear";
+  preview.title = target.identifier ?? target.worktreeName ?? "Worktree";
+  preview.placeholder = "Enter to act · Back or Escape to return";
 
   let done = false;
-  const finish = () => {
+  const finish = (action?: Action) => {
     if (done) return;
     done = true;
+    activePreviewBack = undefined;
     void exitPreview();
     preview.dispose();
-    onBack();
+    if (action) onAction(action);
+    else onBack();
   };
 
   preview.onDidTriggerButton((button) => {
     if (button === vscode.QuickInputButtons.Back) finish();
   });
-  /* Cleared before dispose and on every exit path — a previewOpen left set gates a RightArrow
-     binding at extension weight and would steal the key workbench-wide. */
+  /* ← closes the popup. The earlier argument for leaving it unbound was that typing in the filter
+     box re-sorts the rows, so the user needs cursor-left to undo what they typed — that held for a
+     body digest you might search. These are five scalar rows nobody filters, and → cannot be undone
+     with anything else without reaching for a chord. */
+  activePreviewBack = () => finish();
   preview.onDidHide(() => finish());
-
   preview.onDidAccept(() => {
     const [selected] = preview.selectedItems;
-    if (selected?.action === "signIn") {
-      finish();
-      void vscode.commands.executeCommand("worktreeManager.linear.signIn");
-      return;
-    }
-    if (selected?.action === "bind") {
-      finish();
-      void vscode.commands.executeCommand("worktreeManager.linear.bindIssue");
-      return;
-    }
-    if (selected?.action === "open" && identifier) {
-      finish();
-      void openIssue(identifier);
-    }
+    if (selected?.action) finish(selected.action);
   });
 
+  const base = primaryAction(target);
+  preview.items = [base];
   preview.show();
   await enterPreview();
 
-  /* The degradation table. Every state renders a ROW that says what to do next — never an empty
-     popup, and never an error toast. "No issue" is the common case here, not an edge: the primary
-     worktree normally carries no identifier. */
-  if (!identifier) {
-    preview.busy = false;
-    preview.items = [
-      {
-        label: "$(link) Bind a Linear issue…",
-        detail: "This branch carries no issue identifier",
-        action: "bind",
-        alwaysShow: true,
-      },
-    ];
-    return;
+  /* Both lookups run together: they are independent, and doing them in sequence would make the
+     popup's fill-in take as long as the slower one plus the faster one. */
+  const signedIn = Boolean(await linearToken(context));
+  const remote = parseRemote(await originUrl(target.gitCwd));
+  let issueError: string | undefined;
+  const [issue, pr] = await Promise.all([
+    target.identifier && signedIn
+      ? fetchIssue({ context, identifier: target.identifier }).catch((error: unknown) => {
+          issueError = error instanceof LinearError ? error.message : String(error);
+          return undefined;
+        })
+      : Promise.resolve(undefined),
+    remote && target.branch
+      ? fetchPullRequestForBranch({ ...remote, branch: target.branch }).catch(() => undefined)
+      : Promise.resolve(undefined),
+  ]);
+  if (done) return;
+  preview.busy = false;
+
+  const contextRows: Row[] = [];
+
+  if (target.identifier && !signedIn) {
+    contextRows.push({
+      label: "$(key) Sign in to Linear",
+      detail: `${escapeIcons(target.identifier)} — a credential is needed to read it`,
+      alwaysShow: true,
+      action: { kind: "signIn" },
+    });
+  } else if (issueError) {
+    contextRows.push({
+      label: `$(warning) ${escapeIcons(issueError)}`,
+      alwaysShow: true,
+    });
+  } else if (issue) {
+    /* The digest's own last row is "Open in Linear", which belongs in the actions block below. */
+    contextRows.push(
+      ...digestFor(issue)
+        .slice(0, -1)
+        .map<Row>((row) => ({ ...row, alwaysShow: true })),
+    );
+  } else if (target.identifier) {
+    contextRows.push({
+      label: `$(question) ${escapeIcons(target.identifier)} — not found in this workspace`,
+      alwaysShow: true,
+    });
   }
 
-  if (!(await linearToken(context))) {
-    preview.busy = false;
-    preview.items = [
-      {
-        label: "$(key) Sign in to Linear",
-        detail: `${escapeIcons(identifier)} — a credential is needed to read it`,
-        action: "signIn",
-        alwaysShow: true,
-      },
-    ];
-    return;
+  if (pr) {
+    contextRows.push({
+      label: `$(git-pull-request) #${pr.number} ${escapeIcons(pr.title)}`,
+      description: describePrState(pr),
+      alwaysShow: true,
+    });
   }
 
-  try {
-    const issue = await fetchIssue({ context, identifier });
-    if (done) return;
-    preview.busy = false;
-    if (!issue) {
-      /* The "confident badge linking to a 404" failure, surfaced honestly rather than as a link
-         that silently goes nowhere. */
-      preview.items = [
-        {
-          label: `$(question) ${escapeIcons(identifier)} — not found`,
-          detail: "The branch looks like an issue, but this workspace has no such issue",
-          alwaysShow: true,
-        },
-        { label: "$(link) Bind a different issue…", action: "bind", alwaysShow: true },
-      ];
-      return;
-    }
-    preview.items = [
-      ...digestFor(issue).map<Row>((row, index, all) => ({
-        label: row.label,
-        description: row.description,
-        detail: row.detail,
-        alwaysShow: true,
-        ...(index === all.length - 1 ? { action: "open" as const } : {}),
-      })),
-    ];
-  } catch (error) {
-    if (done) return;
-    preview.busy = false;
-    preview.items = rowsForError(error instanceof LinearError ? error.message : String(error));
+  const trailing: Row[] = [];
+  if (target.identifier) {
+    trailing.push({
+      label: "$(link-external) Open in Linear",
+      alwaysShow: true,
+      action: { kind: "openLinear", identifier: target.identifier },
+    });
   }
+  if (pr) {
+    trailing.push({
+      label: `$(github) Open PR #${pr.number}`,
+      alwaysShow: true,
+      action: { kind: "openPr", url: pr.url },
+    });
+  }
+  if (!target.identifier) {
+    trailing.push({
+      label: "$(link) Bind a Linear issue…",
+      alwaysShow: true,
+      action: { kind: "bind" },
+    });
+  }
+
+  /* Restores the highlight to the action row rather than leaving it wherever the reassignment put
+     it: the first row is what Enter should hit. */
+  preview.items = [
+    base,
+    ...(contextRows.length ? [separator(""), ...contextRows] : []),
+    ...(trailing.length ? [separator(""), ...trailing] : []),
+  ];
+  preview.activeItems = [base];
 };

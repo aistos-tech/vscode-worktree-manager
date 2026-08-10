@@ -141,3 +141,72 @@ export const fetchPullRequests = async ({ owner, name }: { owner: string; name: 
     ];
   });
 };
+
+/* One PR by branch, for the → preview. A separate small query rather than reusing the list fetch:
+   the preview may be opened from the worktrees context, where no PR list has been loaded, and
+   making it depend on one would tie a keystroke to a context the user never visited. */
+export const fetchPullRequestForBranch = async ({
+  owner,
+  name,
+  branch,
+}: {
+  owner: string;
+  name: string;
+  branch: string;
+}) => {
+  const active = await session(false);
+  if (!active) return undefined;
+
+  const response = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: {
+      authorization: `bearer ${active.accessToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      query: `query PrForBranch($owner: String!, $name: String!, $branch: String!) {
+        repository(owner: $owner, name: $name) {
+          pullRequests(headRefName: $branch, first: 5, orderBy: { field: UPDATED_AT, direction: DESC }) {
+            nodes { number title url state isDraft reviewDecision }
+          }
+        }
+      }`,
+      variables: { owner, name, branch },
+    }),
+  });
+  if (!response.ok) return undefined;
+
+  const payload: unknown = await response.json();
+  const body = payload as {
+    data?: {
+      repository?: {
+        pullRequests: {
+          nodes: {
+            number?: number;
+            title?: string;
+            url?: string;
+            state?: string;
+            isDraft?: boolean;
+            reviewDecision?: string | null;
+          }[];
+        };
+      } | null;
+    };
+  };
+  const nodes = body.data?.repository?.pullRequests.nodes ?? [];
+  /* Open beats merged beats closed: a branch can carry several PRs over its life, and the one you
+     want is the one you could still act on. */
+  const best =
+    nodes.find((node) => node.state === "OPEN") ??
+    nodes.find((node) => node.state === "MERGED") ??
+    nodes[0];
+  if (!best?.number) return undefined;
+  return {
+    number: best.number,
+    title: best.title ?? "",
+    url: best.url ?? "",
+    state: best.state ?? "OPEN",
+    isDraft: best.isDraft === true,
+    reviewDecision: best.reviewDecision ?? undefined,
+  };
+};

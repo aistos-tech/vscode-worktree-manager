@@ -362,14 +362,33 @@ injected `<script>` or `onerror=` cannot execute even though it survives renderi
 narrowed to Linear's own storage rather than opened to `https:`, so a body cannot beacon out by
 embedding a remote image.
 
-### Previewing a row's issue
+### Previewing a row
 
-**→** on any picker row opens a popup for that row's issue — a worktree row, a Linear row, or a PR
-row (whose issue is derived from its head branch). **←** is deliberately *not* bound: typing in the
-popup's filter box re-sorts it, so you need cursor-left to undo what you typed. Back is the platform
-binding or Escape.
+**→** on any picker row opens the same popup, from any context — a row means the same thing wherever
+you reached it from: a unit of work that may have a worktree, a Linear issue and a pull request.
+Showing a different subset per tab would make the gesture's result depend on where you came from.
 
-It shows **scalar fields only** — identifier, title, state, assignee — plus `Open in Linear`.
+**Actions first, then context.** The action is why you pressed → — to decide whether to go there —
+so it is the first row and Enter hits it:
+
+```
+$(folder-opened) Open worktree acme-42-import
+──────────────────────────────────────────────
+ACME-42   Import mapping for onboarding
+$(circle-filled) In Progress · Thibault
+$(git-pull-request) #421 Fix the reconciliation  open · approved
+──────────────────────────────────────────────
+$(link-external) Open in Linear
+$(github) Open PR #421
+```
+
+When no worktree exists yet the first row becomes **Create worktree for ‹branch›**; when there is no
+branch at all it becomes **Bind a Linear issue…**. There is always exactly one primary action.
+
+**← closes the preview**, alongside Escape and the platform Back binding. **→ inside the preview does
+nothing** — it is bound to `pickerOpen` only, so it cannot re-enter a preview from a preview.
+
+It shows **scalar fields only** — identifier, title, state, assignee, PR number and state.
 
 ⚠️ **That is a deliberate limit, not an unfinished one.** `QuickPickItem` carries no markdown and
 its `detail` line does not wrap: a long line truncates with an ellipsis. Rendering a ticket *body*
@@ -418,8 +437,8 @@ code change cannot settle.
 | `ctrl+shift+w` | Open the switcher | always |
 | `tab` / `shift+tab` | Cycle to the next / previous context | the picker is open |
 | `alt+1` / `alt+2` / `alt+3` | Jump straight to Worktrees / Linear / Pull requests | the picker is open |
-| `→` | Preview the highlighted row's issue | the picker or preview is open, Linear configured, cursor at end of the filter |
-| `ctrl+-` (macOS) | Back, from the preview | the preview is open |
+| `→` | Preview the highlighted row | the **picker** is open, cursor at end of the filter |
+| `←` / `escape` / `ctrl+-` | Back, from the preview | the preview is open |
 
 ⚠️ `→` and `alt+1/2/3` fire only while a picker of this extension holds focus, and the `→` clause
 additionally reuses two of VS Code's **internal** context keys (`inputFocus`,

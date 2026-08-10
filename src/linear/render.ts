@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import * as vscode from "vscode";
 import type { IssueDetail } from "./client";
 
@@ -35,14 +36,14 @@ export const escapeHtml = (text: string) =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 
-export const nonceFor = () => {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let value = "";
-  for (let index = 0; index < 32; index += 1) {
-    value += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
-  }
-  return value;
-};
+/* A CSPRNG, not `Math.random()`. This nonce is the only thing standing between an injected
+   `<script>` in a ticket body and script execution inside the webview, so it is a security token
+   and has to be unguessable — V8's `Math.random` is xorshift128+, whose state is recoverable from
+   its outputs, and a predictable nonce is a nonce that can be reproduced by whoever authored the
+   content it is supposed to contain. 16 bytes is 128 bits; base64url needs no escaping in an
+   attribute. `randomBytes` is already what pkce.ts uses, so the right primitive was in the
+   codebase and this one was hand-rolled for no reason. */
+const nonceFor = () => randomBytes(16).toString("base64url");
 
 /* The CSP is the sanitiser, and it has to be: markdown permits raw HTML and a ticket body is text
    written by anyone with workspace access. A nonced `script-src` admits only the script written

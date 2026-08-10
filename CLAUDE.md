@@ -43,3 +43,20 @@ One fact has no home there, because it is invisible to a user:
 `contributes.commands` and `contributes.keybindings` are the product. A change to either changes
 `README.md` in the same PR — CI enforces it, and it fires on the `contributes` block alone, so a
 version bump or a devDependency does not demand a docs edit.
+
+## Every `feat` bumps the minor, in the same commit
+
+A `feat` raises the minor and a `fix` raises the patch, in `package.json`, **in the commit that
+makes the change** — not in a release commit afterwards. `0.10.0` through `0.30.2` follow this
+without exception; nothing enforces it, which is why it is written here.
+
+⚠️ **The number is the only staleness signal there is.** This extension is installed by hand
+through *Install Extension from Location…*, which copies the repo into
+`~/.vscode/extensions/<id>-<version>/` — a snapshot, not a link. Ship a change without bumping and
+the installed folder keeps its name, so a stale copy is indistinguishable from a current one and
+nothing prompts a reinstall.
+
+That is not hypothetical: `07d1db1` renamed every setting to `aistos.*` and left the version at
+`0.30.2`. The installed `0.30.2` still declared `worktreeManager.*`, VS Code silently ignores
+settings it does not recognise, and `debt-collection`'s pre-delete hook stopped firing — the exact
+failure this extension exists to prevent, caused by a missed version bump rather than by any code.

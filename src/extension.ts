@@ -653,14 +653,19 @@ const showSwitcher = async ({
       return;
     }
 
-    /* Read-only, deliberately. PR worktree CREATION is composed, not built: the GitHub PR
-       extension already ships "Checkout Pull Request in Worktree", and re-implementing it here
-       would duplicate a free, maintained feature. What nothing else provides is the join — knowing
-       that #404 is the worktree you already have — so `✓` switches and `○` opens the PR. */
+    /* `✓` switches to the worktree that already exists for the PR's branch; `○` CREATES one, with
+       the branch pre-filled. Identical to the Linear context below, deliberately: both lists answer
+       "get me to the work", and a row that behaved differently depending on which tab you were on
+       is a rule to remember rather than a tool to use.
+
+       ⚠️ This used to open the PR in a browser instead, on the argument that the GitHub Pull
+       Requests extension already ships "Checkout Pull Request in Worktree" and duplicating it was
+       not worth it. That reasoning traded the common action for the rare one: from this picker you
+       want the worktree, and reaching the PR page is one keystroke away either way — RightArrow
+       previews the PR and its `Open PR` action still opens the URL. */
     if (isPrItem(selected)) {
       const branch = selected.prBranch;
       const match = worktrees.find((worktree) => worktree.branch === branch);
-      const url = selected.prUrl;
       picker.dispose();
       if (match) {
         vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(match.path), {
@@ -668,7 +673,7 @@ const showSwitcher = async ({
         });
         return;
       }
-      if (url) void vscode.env.openExternal(vscode.Uri.parse(url));
+      void createWorktree({ context, gitCwd: mainPath, worktrees, branchSeed: branch });
       return;
     }
     if (isIssueItem(selected)) {

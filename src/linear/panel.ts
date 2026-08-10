@@ -45,9 +45,14 @@ export const showPreviewPanel = ({ context, target }: ShowProps) =>
     const panel = vscode.window.createWebviewPanel(
       PANEL_TYPE,
       target.identifier ?? target.worktreeName ?? "Preview",
-      /* Beside, not on top of, whatever is open — the picker's job is to move you somewhere, and
-         replacing the file you were reading to preview a ticket is a poor trade. */
-      { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false },
+      /* ⚠️ Active, NOT Beside. `Beside` splits the editor, and a split is a layout change that
+         outlives the preview: the panel closes on the first action and leaves you with a second
+         column you did not ask for and have to close by hand. A new tab in the column you were
+         already in disappears with the panel and leaves the layout exactly as it was.
+
+         The reason `Beside` was chosen first — not replacing the file you were reading — still
+         holds, and a tab satisfies it just as well: the file stays open, one tab to the left. */
+      { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
       { enableScripts: true, retainContextWhenHidden: false },
     );
 

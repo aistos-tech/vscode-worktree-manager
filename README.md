@@ -210,10 +210,16 @@ GitHub authentication is free: `'github'` is a built-in provider id, so there is
 dependency, no client secret, no URI handler and no refresh handling. `Aistos: Sign in to GitHub`
 if you have not already.
 
-**Read-only, deliberately.** `✓` switches to the worktree you already have for that PR's branch;
-`○` opens the PR. Checking a PR out into a worktree is *not* built here — the GitHub Pull Requests
-extension already ships "Checkout Pull Request in Worktree", and re-implementing a free, maintained
-feature to save one hand-off is not worth it. Follow their checkout with `$(sync)` to bootstrap.
+`✓` switches to the worktree you already have for that PR's branch; `○` **creates one**, with the
+branch pre-filled — the same two behaviours as the Linear tab, on purpose. A row that did something
+different depending on which tab you were looking at is a rule to remember rather than a tool to
+use.
+
+⚠️ This was read-only until `0.31.0`: `○` opened the PR in a browser, on the argument that the
+GitHub Pull Requests extension already ships "Checkout Pull Request in Worktree" and duplicating it
+was not worth it. That traded the common action for the rare one. Reaching the PR page costs one
+keystroke either way — **RightArrow** previews it and the preview's `Open PR` action still opens
+the URL.
 
 The reason this context exists at all, given that extension also lists PRs, is the **join**: it
 renders PRs in its own sidebar, unaware of worktrees, so it cannot tell you that `#404` is the
@@ -403,8 +409,14 @@ the PR, `Escape` closes and returns you to the picker with the same row still hi
 handled inside the page rather than as VS Code keybindings, because a webview holds focus while it
 is open and a `when`-scoped binding would need a context key per panel for no gain.
 
-It opens **beside** what you were reading rather than on top of it — the picker's job is to move
-you somewhere, and replacing the file you had open in order to preview a ticket is a poor trade.
+It opens as a **new tab in the column you were already in**, not on top of the file you were
+reading and not in a split. The picker's job is to move you somewhere, and replacing the file you
+had open in order to preview a ticket is a poor trade — but so is a split.
+
+⚠️ It used `ViewColumn.Beside` until `0.31.0`. A split is a *layout* change and it outlives the
+preview: the panel closes on the first action and leaves a second column you never asked for and
+have to close by hand. A tab disappears with the panel and leaves the layout exactly as it was,
+while still keeping the file you were reading one tab to the left.
 
 📌 **This replaced a native modal.** A modal's body is plain text by API — no markdown, no images,
 no links — so ticket content had to be flattened into an approximation and then truncated to stop

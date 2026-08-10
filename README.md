@@ -399,11 +399,27 @@ entire affordance is "press Enter on me" held three rows that did nothing, and t
 the part you actually want — could not be shown at all, because `detail` does not wrap and would
 truncate a sentence mid-clause.
 
-⚠️ **A modal's body is plain text.** No markdown, no images, no links. Ticket bodies are flattened
-first: images become `[image: alt]` rather than vanishing, links keep their text, checklists become
-`☐`/`☑`, fences lose their backticks and keep their code. Anything past ~1400 characters is cut at a
-paragraph or sentence boundary — never mid-word — and says `… continued in Linear`. The **sidebar**
-is where the fully rendered ticket lives, with real markdown and images.
+⚠️ **A modal's body is plain text — that is the API, not a limitation of the flattening.** VS Code
+renders `detail` as text: no markdown, no images, no links, no way around it. So ticket bodies are
+flattened first, and the flattening handles what actually turns up in tickets:
+
+| In the ticket | In the modal |
+|---|---|
+| `![alt](url)` or a bare `uploads.linear.app` URL | `[image: alt]` / `[attachment]` — named, never dropped |
+| `[text](url)` | `text` |
+| `- [ ]` / `- [x]` | `☐` / `☑` |
+| `\| a \| b \|` tables | `a  ·  b`, alignment row removed |
+| ` ```fenced``` ` | the code, without the backticks |
+| `---` | `──────────` |
+| `~~struck~~` | `(struck — struck)` |
+| `<br/>`, `<span>` | removed |
+
+Bodies are cut only past **6000** characters, at a paragraph or sentence boundary and never
+mid-word, with `… continued in Linear`. A normal ticket is well inside that.
+
+✅ **For real markdown, the panel follows you.** Pressing → points the sidebar at that row before the
+modal opens, so closing the modal leaves the fully rendered ticket — markdown, checklists, images —
+behind it. Closing the picker releases it back to the worktree you are actually in.
 
 Buttons are capped at three so the row does not wrap. The primary action comes first: **Open
 worktree** when one exists, **Create worktree** when it does not.

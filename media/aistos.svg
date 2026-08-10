@@ -1,11 +1,9 @@
 <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <!-- A trunk with two worktrees branching off it. Monochrome and currentColor, which is what the
-       activity bar themes against. -->
-  <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="6" cy="5" r="2"/>
-    <circle cx="6" cy="19" r="2"/>
-    <circle cx="18" cy="12" r="2"/>
-    <path d="M6 7v10"/>
-    <path d="M6 12h6a4 4 0 0 1 4 0"/>
+  <!-- Activity bar icons are recoloured by the theme, so this is a single-colour silhouette in
+       currentColor with no fills of its own. Stroke-based rather than a filled glyph: at 24px a
+       filled letterform loses its counter, while two strokes and a bar stay legible. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.5 20 12 4l7.5 16"/>
+    <path d="M7.7 13.6h8.6"/>
   </g>
 </svg>

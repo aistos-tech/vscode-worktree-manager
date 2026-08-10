@@ -116,6 +116,10 @@ export type IssueView = vscode.WebviewViewProvider & {
   reveal: () => void;
   refresh: () => Promise<void>;
   forget: () => void;
+  /* Points the panel at a row other than the current worktree, and `undefined` releases it. The
+     modal can only render plain text, so this is where the rendered ticket — real markdown, real
+     images — is one Escape away from the row you were looking at. */
+  follow: (identifier: string | undefined) => Promise<void>;
 };
 
 export const createIssueView = ({
@@ -126,6 +130,7 @@ export const createIssueView = ({
   resolveIdentifier: ResolveIdentifier;
 }): IssueView => {
   let view: vscode.WebviewView | undefined;
+  let followed: string | undefined;
   /* Last rendered body, so a reopened window is not blank while the refetch runs, and an offline
      window still shows the ticket it last had. In memory only — it dies with the window rather
      than becoming ticket text at rest. */
@@ -139,7 +144,7 @@ export const createIssueView = ({
   const refresh = async () => {
     if (!view) return;
 
-    const identifier = resolveIdentifier();
+    const identifier = followed ?? resolveIdentifier();
     if (!identifier) {
       paint(shell("This worktree's branch carries no Linear issue."));
       return;
@@ -184,6 +189,11 @@ export const createIssueView = ({
     /* preserveFocus: revealing the ticket must not steal the keyboard from whatever asked for it. */
     reveal: () => view?.show?.(true),
     refresh,
+    follow: async (identifier) => {
+      followed = identifier;
+      lastBody = "";
+      await refresh();
+    },
     forget: () => {
       lastBody = "";
       void refresh();

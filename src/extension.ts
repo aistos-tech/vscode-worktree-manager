@@ -19,7 +19,7 @@ import { fetchMyIssues, LinearError } from "./linear/client";
 import { issueIdFor } from "./linear/id";
 import { showPreviewModal } from "./linear/preview";
 import { escapeIcons } from "./linear/text";
-import { createIssueView, ISSUE_VIEW_ID } from "./linear/view";
+import { createIssueView, ISSUE_VIEW_ID, type IssueView } from "./linear/view";
 import { deleteWorktree, renameWorktree } from "./manage";
 import {
   type CachedRow,
@@ -703,6 +703,9 @@ const showSwitcher = async ({
     try {
       activePreviewTrigger = undefined;
       activeContextCycler = undefined;
+      /* Released when the picker closes, so the panel goes back to showing where you ARE rather
+         than staying pinned to whatever row you last glanced at. */
+      void issuePanel?.follow(undefined);
       void exitAll();
     } finally {
       picker.dispose();
@@ -735,6 +738,11 @@ const showSwitcher = async ({
 
     /* The modal takes focus, so the picker hides on the way in. Flagged, because the picker's own
        onDidHide would otherwise dispose the instance we are about to bring back. */
+    /* Points the sidebar at this row BEFORE the modal opens, so closing the modal leaves the fully
+       rendered ticket — markdown, checklists, images — sitting behind it. The modal is the glance;
+       the panel is the read, and a modal body is plain text by API. */
+    if (identifier) void issuePanel?.follow(identifier);
+
     const restore = picker.activeItems;
     handingOverToPreview = true;
     await exitPicker();
@@ -832,6 +840,11 @@ const withCurrentWorktree = async ({ root, announce }: CurrentWorktreeProps) => 
 /* The worktree this window is open on, once git has said so. Held here because the sidebar's
    provider is registered before it is known — see the comment at that registration. */
 let currentWorktree: Worktree | undefined;
+
+/* One panel per window, and the switcher needs to point it at a row. Held here for the same reason
+   the preview trigger is: there is exactly one, and the code that uses it is not the code that
+   creates it. */
+let issuePanel: IssueView | undefined;
 
 export const activate = async (context: vscode.ExtensionContext) => {
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -999,6 +1012,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
         branch: currentWorktree.branch,
       }),
   });
+  issuePanel = issueView;
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(ISSUE_VIEW_ID, issueView),
     vscode.commands.registerCommand(REFRESH_ISSUE_COMMAND, () => issueView.refresh()),

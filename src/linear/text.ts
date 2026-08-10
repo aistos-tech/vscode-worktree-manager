@@ -14,15 +14,47 @@ export const escapeIcons = (text: string) => text.replaceAll("$(", "$​(");
 
 const IMAGE = /!\[([^\]]*)\]\(([^)]*)\)/g;
 const LINK = /\[([^\]]+)\]\(([^)]*)\)/g;
+/* A table ROW is any line of pipe-separated cells; the alignment row under the header is the one
+   made only of dashes and colons, and it carries no information once the pipes are gone. */
+const TABLE_DIVIDER = /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/;
+const TABLE_ROW = /^\s*\|(.+)\|\s*$/;
+/* `[ \\t]`, never `\\s`: `\\s` matches newlines, so the rule swallowed the blank lines on either
+   side of itself and welded three paragraphs into one. */
+const RULE = /^[ \t]*(?:[-*_][ \t]*){3,}$/gm;
+
+/* Linear pastes bare upload URLs as well as markdown images, and a raw signed URL is a line of
+   opaque query string that tells the reader nothing. */
+const BARE_UPLOAD = /https:\/\/uploads\.linear\.app\/\S+/g;
+
+const flattenTables = (text: string) =>
+  text
+    .split("\n")
+    .flatMap((line) => {
+      if (TABLE_DIVIDER.test(line) && line.includes("|")) return [];
+      const row = TABLE_ROW.exec(line);
+      if (!row?.[1]) return [line];
+      return [
+        row[1]
+          .split("|")
+          .map((cell) => cell.trim())
+          .filter(Boolean)
+          .join("  ·  "),
+      ];
+    })
+    .join("\n");
 
 export const toPlainText = (markdown: string) =>
-  markdown
+  flattenTables(markdown)
     /* Images cannot render, so they become a named placeholder rather than vanishing — a ticket
        whose content IS a screenshot would otherwise look empty. */
     .replaceAll(IMAGE, (_match, alt: string) => `[image${alt ? `: ${alt}` : ""}]`)
     /* Links keep their text and lose the URL: the URL is unclickable here and is usually longer
        than the sentence containing it. */
     .replaceAll(LINK, (_match, label: string) => label)
+    .replaceAll(BARE_UPLOAD, "[attachment]")
+    /* Before the bullet rewrite, so a spaced `- - -` is read as a rule rather than as a bullet. A
+       horizontal rule is a real separator in a long ticket and survives as one. */
+    .replace(RULE, "──────────")
     /* Checklists are decisions, and they survive as something a reader recognises. */
     .replace(/^(\s*)[-*]\s+\[ \]\s+/gm, "$1☐ ")
     .replace(/^(\s*)[-*]\s+\[[xX]\]\s+/gm, "$1☑ ")
@@ -33,6 +65,10 @@ export const toPlainText = (markdown: string) =>
     /* Heading hashes go; the text stays as its own line, which is enough structure here. */
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/^>\s?/gm, "")
+    /* Strikethrough usually marks something decided against, which is worth keeping visible. */
+    .replace(/~~([^~]+)~~/g, "($1 — struck)")
+    /* Inline HTML: Linear allows it and a modal cannot render it. */
+    .replace(/<\/?[a-zA-Z][^>]*>/g, "")
     /* Bold/italic markers, without eating a lone asterisk mid-word. */
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/(?<!\w)_([^_]+)_(?!\w)/g, "$1")
@@ -41,9 +77,11 @@ export const toPlainText = (markdown: string) =>
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-/* Long enough for a real ticket, short enough that the dialog does not become a scroll surface it
-   was never designed to be. Anything past it is one click away in Linear. */
-export const MODAL_BODY_LIMIT = 1400;
+/* Generous on purpose. The first value here was 1400, which cut ordinary tickets in half — the
+   limit exists to stop a pathological body making the dialog taller than the screen, not to keep
+   the preview short. A normal Linear description is well inside this; anything past it is one
+   button away, and the sidebar renders the whole thing properly regardless. */
+export const MODAL_BODY_LIMIT = 6000;
 
 export const truncate = (text: string, limit = MODAL_BODY_LIMIT) => {
   if (text.length <= limit) return text;

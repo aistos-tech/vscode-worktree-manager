@@ -71,6 +71,43 @@ describe("toPlainText", () => {
   test("returns empty for empty input", () => {
     expect(toPlainText("")).toBe("");
   });
+
+  /* The cases that made the preview read as "limited markdown support" — all of them arrive in
+     ordinary Linear tickets and all of them rendered as raw syntax. */
+  test("flattens a table into readable rows", () => {
+    const table = "| Column | Rule |\n| --- | --- |\n| solde | ≤ original |";
+    expect(toPlainText(table)).toBe("Column  ·  Rule\nsolde  ·  ≤ original");
+  });
+
+  test("drops the table alignment row, including colon forms", () => {
+    expect(toPlainText("| a | b |\n|:--- | ---:|\n| 1 | 2 |")).toBe("a  ·  b\n1  ·  2");
+  });
+
+  test("leaves a line with a stray pipe alone", () => {
+    expect(toPlainText("run a | b")).toBe("run a | b");
+  });
+
+  test("keeps a horizontal rule as a separator", () => {
+    expect(toPlainText("a\n\n---\n\nb")).toBe("a\n\n──────────\n\nb");
+  });
+
+  test("keeps strikethrough visible rather than silently dropping it", () => {
+    expect(toPlainText("~~use the slot~~")).toBe("(use the slot — struck)");
+  });
+
+  test("strips inline HTML", () => {
+    expect(toPlainText("a <br/> b <span>c</span>")).toBe("a  b c");
+  });
+
+  test("names a bare Linear upload url", () => {
+    expect(toPlainText("see https://uploads.linear.app/abc?sig=x now")).toBe(
+      "see [attachment] now",
+    );
+  });
+
+  test("keeps ordered lists as they are", () => {
+    expect(toPlainText("1. first\n2. second")).toBe("1. first\n2. second");
+  });
 });
 
 describe("truncate", () => {

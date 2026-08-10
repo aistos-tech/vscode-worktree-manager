@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Aistos",
   "description": "Worktrees, Linear issues and pull requests in one switcher, with per-repo bootstrap hooks",
-  "version": "0.32.0",
+  "version": "0.33.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -258,6 +258,11 @@
       {
         "command": "worktreeManager.hooks.listApprovals",
         "title": "List Hook Approvals",
+        "category": "Aistos"
+      },
+      {
+        "command": "worktreeManager.showLogs",
+        "title": "Show Logs",
         "category": "Aistos"
       },
       {

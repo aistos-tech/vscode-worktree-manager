@@ -59,6 +59,8 @@ are still `worktreeManager`-based, and deliberately — see [Naming](#naming).
   is deleted. See below.
 - **Hook approvals** — `Aistos: List Hook Approvals` shows what you have approved;
   `Aistos: Forget Hook Approval…` revokes one.
+- **Logs** — `Aistos: Show Logs` opens the extension's output channel. Failures also raise a toast
+  with a **Show Logs** button, so a flow that dies no longer dies quietly.
 
 ## Per-repo hooks
 
@@ -567,6 +569,23 @@ the editor path fails:
 | Worktree made outside the editor | `Aistos: Bootstrap Worktree…` — this is what it is for |
 | Stack orphaned by a bare `git worktree remove` | the repo's orphan-reclaim command |
 | Hook prompts you unexpectedly | `Aistos: List Hook Approvals` to see what is stored |
+| **Nothing happens at all** | `Aistos: Show Logs` — see below |
+
+### Logs
+
+`Aistos: Show Logs` opens the **Aistos** output channel. It is a `LogOutputChannel`, so
+*Developer: Set Log Level…* → `Trace` turns on the per-step detail and the default level stays
+quiet.
+
+⚠️ **There was no log surface at all before `0.33.0`, and that was a real defect rather than a
+missing nicety.** Every flow the picker starts runs as fire-and-forget — the picker disposes, the
+work continues without anything awaiting it — so a rejection anywhere in it was swallowed by the
+extension host. No dialog, no output, no trace. `Enter` on a PR row that failed produced *nothing*,
+and "nothing happened" was the entire bug report available.
+
+Those launches now go through a wrapper that cannot swallow a rejection: it logs the stack and
+raises a toast naming the operation, with a **Show Logs** button on it. So a failure announces
+itself whether or not the channel is open.
 
 ## Package
 

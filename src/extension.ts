@@ -20,6 +20,7 @@ import { issueIdFor } from "./linear/id";
 import { showPreviewPanel } from "./linear/panel";
 import { escapeIcons } from "./linear/text";
 import { createIssueView, ISSUE_VIEW_ID, type IssueView } from "./linear/view";
+import { initLog, logDebug, logInfo, report, showLog } from "./log";
 import { deleteWorktree, renameWorktree } from "./manage";
 import {
   type CachedRow,
@@ -72,6 +73,7 @@ const BIND_ISSUE_COMMAND = "worktreeManager.linear.bindIssue";
 const FORGET_APPROVAL_COMMAND = "worktreeManager.hooks.forget";
 const LIST_APPROVALS_COMMAND = "worktreeManager.hooks.listApprovals";
 const BOOTSTRAP_COMMAND = "worktreeManager.bootstrap";
+const SHOW_LOGS_COMMAND = "worktreeManager.showLogs";
 const RENAME_TOOLTIP = "Rename";
 const DELETE_TOOLTIP = "Delete";
 const BOOTSTRAP_TOOLTIP = "Re-run the post-create hook";
@@ -622,12 +624,15 @@ const showSwitcher = async ({
     if (isCreateItem(selected)) {
       const seed = picker.value.trim();
       picker.dispose();
-      void createWorktree({
-        context,
-        gitCwd: mainPath,
-        worktrees,
-        branchSeed: seed || undefined,
-      });
+      report(
+        "Create worktree",
+        createWorktree({
+          context,
+          gitCwd: mainPath,
+          worktrees,
+          branchSeed: seed || undefined,
+        }),
+      );
       return;
     }
     /* The rows that offer an action. Handled BEFORE the item-type checks below, because a note is
@@ -666,6 +671,12 @@ const showSwitcher = async ({
     if (isPrItem(selected)) {
       const branch = selected.prBranch;
       const match = worktrees.find((worktree) => worktree.branch === branch);
+      /* The trace that "nothing happened" needed. A PR row can no-op for three different reasons —
+         the branch is empty, a worktree already matched and the switch failed, or creation threw —
+         and from the outside all three look identical. */
+      logDebug(
+        `picker: accept PR row branch=${JSON.stringify(branch)} match=${match?.path ?? "<none>"}`,
+      );
       picker.dispose();
       if (match) {
         vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(match.path), {
@@ -673,7 +684,10 @@ const showSwitcher = async ({
         });
         return;
       }
-      void createWorktree({ context, gitCwd: mainPath, worktrees, branchSeed: branch });
+      report(
+        "Create worktree",
+        createWorktree({ context, gitCwd: mainPath, worktrees, branchSeed: branch }),
+      );
       return;
     }
     if (isIssueItem(selected)) {
@@ -689,7 +703,10 @@ const showSwitcher = async ({
       /* Creates through the ordinary flow with the branch pre-filled — taken from Linear's own
          branchName VERBATIM, never rebuilt from a slug, because that string is what Linear matches
          branches and PRs against. */
-      void createWorktree({ context, gitCwd: mainPath, worktrees, branchSeed: branch });
+      report(
+        "Create worktree",
+        createWorktree({ context, gitCwd: mainPath, worktrees, branchSeed: branch }),
+      );
       return;
     }
     if (!isWorktreeItem(selected)) return;
@@ -791,7 +808,10 @@ const showSwitcher = async ({
     }
     if (action.kind === "createWorktree") {
       picker.dispose();
-      void createWorktree({ context, gitCwd: mainPath, worktrees, branchSeed: action.branch });
+      report(
+        "Create worktree",
+        createWorktree({ context, gitCwd: mainPath, worktrees, branchSeed: action.branch }),
+      );
       return;
     }
     if (action.kind === "openLinear") void openIssue(action.identifier);
@@ -851,7 +871,9 @@ let currentWorktree: Worktree | undefined;
 let issuePanel: IssueView | undefined;
 
 export const activate = async (context: vscode.ExtensionContext) => {
+  initLog(context);
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  logInfo(`activate — folder: ${root ?? "<none>"}`);
 
   const requireRoot = () => {
     if (root) return root;
@@ -961,6 +983,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
       await forgetApproval(context, picked.path);
       vscode.window.showInformationMessage(`Forgot the hook approval for ${picked.path}.`);
     }),
+    vscode.commands.registerCommand(SHOW_LOGS_COMMAND, () => showLog()),
     vscode.commands.registerCommand(LIST_APPROVALS_COMMAND, () => {
       const approvals = listApprovals(context);
       if (approvals.length === 0) {

@@ -6,6 +6,7 @@ import { describeExit, type HookEnv, runHook } from "./hooks";
 import { linearToken } from "./linear/auth";
 import { LinearError, moveToStarted } from "./linear/client";
 import { issueIdFor } from "./linear/id";
+import { logInfo } from "./log";
 import { toAbsolutePath } from "./paths";
 import { setting } from "./settings";
 import { ensureApproved } from "./trust";
@@ -46,6 +47,30 @@ const PURPOSE_KEY = "aistos.hooks.purpose";
 const resolvePurpose = (requested: HookEnv["WORKTREE_PURPOSE"]) => {
   const configured = setting<string>(PURPOSE_KEY, "auto");
   return configured === "work" || configured === "review" ? configured : requested;
+};
+
+/* Between the last prompt and the finish toast, this flow used to show NOTHING for minutes. The
+   hook does stream into a task terminal, but it opens with `focus: false` in a dedicated panel, so
+   unless you already knew to look there the editor sat still and the create looked dead.
+
+   One notification per long step, each disappearing when its step ends. Deliberately not a single
+   notification held open across the whole flow: the two steps fail differently — `git worktree add`
+   fails in seconds and is recoverable, the hook fails in minutes and leaves the worktree — and a
+   progress bar that spans both says less than two that name what is running.
+
+   Not cancellable, and that is not an oversight. Neither step is safely interruptible: killing
+   `git worktree add` midway leaves a half-registered worktree, and killing the hook leaves a
+   half-built stack the pre-delete hook then has to tear down. */
+const withStep = <T>(message: string, run: () => Thenable<T>) => {
+  logInfo(`create: ${message}`);
+  return vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `Aistos: ${message}`,
+      cancellable: false,
+    },
+    run,
+  );
 };
 
 const askBranch = (seed: string | undefined) =>
@@ -199,7 +224,9 @@ export const createWorktree = async ({
   mkdirSync(dirname(dest), { recursive: true });
 
   try {
-    await addWorktree({ dest, branch, source, gitCwd });
+    await withStep(`Creating ${basename(dest)}…`, () =>
+      addWorktree({ dest, branch, source, gitCwd }),
+    );
   } catch (error) {
     const recovered = await recoverFromAddFailure({
       dest,
@@ -226,17 +253,22 @@ export const createWorktree = async ({
       );
       return;
     }
-    const exitCode = await runHook({
-      command: hook.command,
-      cwd: gitCwd,
-      env: {
-        WORKTREE_PATH: dest,
-        WORKTREE_BRANCH: branch,
-        WORKTREE_SOURCE: source ?? "",
-        WORKTREE_PURPOSE: resolvePurpose(purpose),
-      },
-      name: `postCreate ${basename(dest)}`,
-    });
+    const resolved = resolvePurpose(purpose);
+    /* The purpose is in the title because it changes how long this takes by minutes, and a user
+       watching a `review` bootstrap finish in seconds should not wonder what was skipped. */
+    const exitCode = await withStep(`Bootstrapping ${basename(dest)} for ${resolved}…`, () =>
+      runHook({
+        command: hook.command,
+        cwd: gitCwd,
+        env: {
+          WORKTREE_PATH: dest,
+          WORKTREE_BRANCH: branch,
+          WORKTREE_SOURCE: source ?? "",
+          WORKTREE_PURPOSE: resolved,
+        },
+        name: `postCreate ${basename(dest)}`,
+      }),
+    );
     /* The worktree is KEPT on hook failure, matching the CLI — there is no rollback, and the
        bootstrap command is the retry. */
     if (exitCode !== 0) {

@@ -131,6 +131,17 @@ the repo's `origin`, and a digest of the tracked `scripts/` tree. Any of those c
 string. A branch that leaves the settings byte-identical and rewrites the script it calls is why
 the tree digest is part of the key.
 
+**The prompt is a quick pick step, not a modal**, since `0.37.0`. It appears in the same sequence
+as branch → source → destination, with two rows and the command in the placeholder. A modal took
+over the window, centred itself, and rendered its detail as a wall of grey text in the middle of a
+flow made of quick picks — and the paragraph above lived inside it, re-read on every re-ask until
+nobody read any of it. It is documented here once instead. The gate itself is unchanged: same
+fingerprint, same storage, same refusal semantics on the delete path.
+
+💡 **If it re-asks more often than you expect, the `scripts/` digest is why** — in a repo where
+`scripts/` changes weekly, so does the prompt. That is the cost of covering the
+rewrite-the-script-without-touching-settings case, and it is a deliberate trade rather than a bug.
+
 ⚠️ **The hook inherits the extension host's environment.** `ShellExecutionOptions.env` is *merged*
 with the parent environment — it cannot subtract — so `GITHUB_TOKEN`, `ANTHROPIC_API_KEY` and
 `DATABASE_URL` reach the hook if they reached VS Code. The trust approval is the only real

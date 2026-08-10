@@ -94,19 +94,32 @@ export const ensureApproved = async ({
   if (matches(stored, current)) return true;
 
   const known = stored !== undefined;
-  const answer = await vscode.window.showWarningMessage(
-    known ? "This repo's worktree hook has changed. Run it?" : "Run this repo's worktree hook?",
+  /* A QuickPick STEP, not a modal. This sits in the middle of a sequence of quick picks and input
+     boxes — branch, source, destination — and a modal broke that rhythm: it takes over the window,
+     centres itself, renders its detail as a wall of grey text, and has to be dismissed with the
+     mouse or a different key than every step around it.
+
+     The rows carry the decision, the detail carries the command, and everything else moved to the
+     README. What was cut is not lost: the paragraph explaining that approval covers the whole
+     script tree is read once, not re-read every time the tree changes and this re-asks. Keeping it
+     here made the dialog long enough that nobody read any of it, which is worse than short.
+
+     ⚠️ Still a real gate, and `ignoreFocusOut` is why. A quick pick dismissed by a stray click
+     would return undefined and read as a decline — harmless here, but on the DELETE path a decline
+     aborts the deletion, and a hook prompt that vanishes when you alt-tab would look like a bug in
+     delete rather than a refusal. */
+  const picked = await vscode.window.showQuickPick(
+    [
+      { label: "$(play) Run the hook", detail: consequence, approve: true },
+      { label: "$(circle-slash) Skip it", approve: false },
+    ],
     {
-      modal: true,
-      detail:
-        `${command}\n\nfrom ${source}/.vscode/settings.json\n\n${consequence}\n\n` +
-        "Approving trusts this repo's whole script tree at its current commit, not just the " +
-        "command above. The approval is re-asked when the command, the folder it came from, or " +
-        "anything under scripts/ changes.",
+      title: known ? "This repo's worktree hook has changed" : "Run this repo's worktree hook?",
+      placeHolder: `${command}  —  from ${source}/.vscode/settings.json`,
+      ignoreFocusOut: true,
     },
-    "Run hook",
   );
-  if (answer !== "Run hook") return false;
+  if (!picked?.approve) return false;
 
   await context.globalState.update(keyFor(primaryPath), current);
   return true;

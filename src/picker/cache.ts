@@ -89,9 +89,44 @@ export const writeCache = async ({
   await context.globalState.update(CACHE_KEY, store);
 };
 
+/* The PR cache is separate from the row cache because its shape is different, but it obeys the
+   same rules: only what a row needs, cleared on sign-out with everything else. Without it the PR
+   context paid a cold ~500 ms fetch on every visit, which is the exact latency the whole
+   cached-first-paint design exists to avoid. */
+const PR_CACHE_KEY = "picker.prCache";
+
+type PrStore = Record<string, { at: number; rows: unknown[] }>;
+
+export const readPrCache = <T>({
+  context,
+  key,
+}: {
+  context: vscode.ExtensionContext;
+  key: string;
+}) => {
+  const entry = context.globalState.get<PrStore>(PR_CACHE_KEY, {})[key];
+  return entry ? { at: entry.at, rows: entry.rows as T[] } : undefined;
+};
+
+export const writePrCache = async <T>({
+  context,
+  key,
+  rows,
+}: {
+  context: vscode.ExtensionContext;
+  key: string;
+  rows: readonly T[];
+}) => {
+  const store = { ...context.globalState.get<PrStore>(PR_CACHE_KEY, {}) };
+  store[key] = { at: Date.now(), rows: [...rows] };
+  await context.globalState.update(PR_CACHE_KEY, store);
+};
+
 /* Cleared on sign-out in the same act as the credential — see linear/auth.ts. */
-export const clearCache = (context: vscode.ExtensionContext) =>
-  context.globalState.update(CACHE_KEY, undefined);
+export const clearCache = async (context: vscode.ExtensionContext) => {
+  await context.globalState.update(CACHE_KEY, undefined);
+  await context.globalState.update(PR_CACHE_KEY, undefined);
+};
 
 /* Renders "as of 4 minutes ago" rather than letting `busy` stand in for freshness. `busy` conflates
    "loading" with "unverified", so a warm cache whose refetch failed would otherwise read as fresh. */

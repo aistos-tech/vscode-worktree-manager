@@ -8,12 +8,19 @@ const ENDPOINT = "https://api.github.com/graphql";
 
 export class GitHubError extends Error {}
 
+/* Classified from ONE payload rather than by running three searches, so the groups can never
+   disagree about which bucket a PR belongs to. */
+export type PullRequestGroup = "review" | "mine" | "other";
+
 export type PullRequest = {
   number: number;
   title: string;
   headRefName: string;
   url: string;
   author: string;
+  group: PullRequestGroup;
+  isDraft: boolean;
+  reviewDecision: string | undefined;
 };
 
 const session = (createIfNone: boolean) =>
@@ -32,7 +39,7 @@ export const signInToGitHub = async () => Boolean(await session(true));
 
    `gh` was what the original timing measurement used, but it is not a safe runtime dependency for
    an extension other people install and would need its own PATH handling in the extension host. */
-export const fetchReviewRequested = async ({ owner, name }: { owner: string; name: string }) => {
+export const fetchPullRequests = async ({ owner, name }: { owner: string; name: string }) => {
   const active = await session(false);
   if (!active) throw new GitHubError("Not signed in to GitHub.");
 
@@ -43,24 +50,32 @@ export const fetchReviewRequested = async ({ owner, name }: { owner: string; nam
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      query: `query Reviews($q: String!) {
-        search(type: ISSUE, query: $q, first: 30) {
+      /* `viewer` rides along in the same round trip: classifying "mine" needs the login, and a
+         second request for it would double the latency of the whole context. */
+      query: `query PullRequests($q: String!) {
+        viewer { login }
+        search(type: ISSUE, query: $q, first: 100) {
           nodes {
             ... on PullRequest {
               number
               title
               headRefName
               url
+              isDraft
+              reviewDecision
               author { login }
+              reviewRequests(first: 20) {
+                nodes { requestedReviewer { ... on User { login } } }
+              }
             }
           }
         }
       }`,
       variables: {
-        /* Scoped to review, because that is the stated purpose. Measured on this repo:
-           `review-requested:@me` returns 3 while all open PRs returns 35, most of them your own —
-           a context that lists everything is a scrolling exercise. */
-        q: `repo:${owner}/${name} is:open is:pr review-requested:@me`,
+        /* Every open PR, not just the review queue. The queue is surfaced by ORDERING — it is the
+           first group — rather than by exclusion, so the rest stay reachable instead of invisible.
+           100 is the search page cap and comfortably above this repo's ~35. */
+        q: `repo:${owner}/${name} is:open is:pr`,
       },
     }),
   });
@@ -75,13 +90,19 @@ export const fetchReviewRequested = async ({ owner, name }: { owner: string; nam
   const payload: unknown = await response.json();
   const body = payload as {
     data?: {
+      viewer?: { login?: string };
       search: {
         nodes: {
           number?: number;
           title?: string;
           headRefName?: string;
           url?: string;
+          isDraft?: boolean;
+          reviewDecision?: string | null;
           author?: { login?: string } | null;
+          reviewRequests?: {
+            nodes: { requestedReviewer?: { login?: string } | null }[];
+          } | null;
         }[];
       };
     };
@@ -92,17 +113,31 @@ export const fetchReviewRequested = async ({ owner, name }: { owner: string; nam
   }
   if (!body.data) throw new GitHubError("GitHub returned no data.");
 
-  return body.data.search.nodes.flatMap<PullRequest>((node) =>
-    node.number === undefined || !node.headRefName
-      ? []
-      : [
-          {
-            number: node.number,
-            title: node.title ?? "",
-            headRefName: node.headRefName,
-            url: node.url ?? "",
-            author: node.author?.login ?? "?",
-          },
-        ],
-  );
+  const viewer = body.data.viewer?.login;
+  return body.data.search.nodes.flatMap<PullRequest>((node) => {
+    if (node.number === undefined || !node.headRefName) return [];
+    const requested = (node.reviewRequests?.nodes ?? []).some(
+      (entry) => entry.requestedReviewer?.login === viewer,
+    );
+    const author = node.author?.login ?? "?";
+    /* Review beats authorship: a PR you opened and were also asked to review belongs in the queue,
+       because the queue is the group with an action attached to it. */
+    const group: PullRequestGroup = requested
+      ? "review"
+      : viewer !== undefined && author === viewer
+        ? "mine"
+        : "other";
+    return [
+      {
+        number: node.number,
+        title: node.title ?? "",
+        headRefName: node.headRefName,
+        url: node.url ?? "",
+        author,
+        group,
+        isDraft: node.isDraft === true,
+        reviewDecision: node.reviewDecision ?? undefined,
+      },
+    ];
+  });
 };

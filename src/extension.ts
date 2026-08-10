@@ -3,12 +3,7 @@ import * as vscode from "vscode";
 import { bootstrapWorktree } from "./bootstrap";
 import { resolveHook } from "./config";
 import { createWorktree } from "./create";
-import {
-  fetchReviewRequested,
-  GitHubError,
-  hasGitHubSession,
-  signInToGitHub,
-} from "./github/client";
+import { fetchPullRequests, GitHubError, hasGitHubSession, signInToGitHub } from "./github/client";
 import { parseRemote } from "./github/remote";
 import { linearToken, onSignOut, signIn, signOut } from "./linear/auth";
 import {
@@ -25,10 +20,25 @@ import { issueIdFor } from "./linear/id";
 import { showIssuePreview } from "./linear/preview";
 import { createIssueView, ISSUE_VIEW_ID } from "./linear/view";
 import { deleteWorktree, renameWorktree } from "./manage";
-import { type CachedRow, clearCache, describeAge, readCache, writeCache } from "./picker/cache";
+import {
+  type CachedRow,
+  clearCache,
+  describeAge,
+  readCache,
+  readPrCache,
+  writeCache,
+  writePrCache,
+} from "./picker/cache";
 import { enterPicker, exitAll, exitPicker } from "./picker/context-keys";
 import { errorNote, type Note, type NoteAction, noteRow, signInNote } from "./picker/notes";
-import { byLocalFirst, localSplitIndex } from "./picker/order";
+import {
+  byGroupThenLocal,
+  byLocalFirst,
+  groupStarts,
+  localSplitIndex,
+  PR_GROUP_LABEL,
+  type PrGroup,
+} from "./picker/order";
 import {
   ensureColours,
   type OpenedMap,
@@ -193,7 +203,9 @@ const isIssueItem = (item: vscode.QuickPickItem): item is IssueItem => "issueBra
 const issueItem = (row: CachedRow & { local: boolean }): IssueItem => ({
   label: `${row.local ? "$(check)" : "$(circle-outline)"} ${row.identifier} ${row.title}`,
   description: row.state,
-  detail: row.local ? undefined : `Creates a worktree on ${row.branch}`,
+  /* A local row keeps a detail line rather than dropping to nothing — otherwise the rows you can
+     act on most cheaply are the sparsest ones on screen. */
+  detail: row.local ? `${row.branch} · worktree open` : `Creates a worktree on ${row.branch}`,
   issueBranch: row.branch,
 });
 
@@ -216,6 +228,51 @@ const withLocalSeparator = <T extends { local: boolean }>(
       : [toItem(row)],
   );
 };
+
+export type PrRow = {
+  number: number;
+  title: string;
+  branch: string;
+  url: string;
+  group: PrGroup;
+  isDraft: boolean;
+  reviewDecision: string | undefined;
+};
+
+/* One separator ahead of each group. `groupStarts` marks index 0 too, so the first group is
+   labelled as well — with three groups in play, an unlabelled top block reads as ungrouped. */
+const withGroupSeparators = <T extends { group: PrGroup }>(
+  ordered: readonly T[],
+  toItem: (row: T) => vscode.QuickPickItem,
+): vscode.QuickPickItem[] => {
+  const starts = groupStarts(ordered);
+  return ordered.flatMap((row, index) => {
+    const group = starts.get(index);
+    return group
+      ? [{ label: PR_GROUP_LABEL[group], kind: vscode.QuickPickItemKind.Separator }, toItem(row)]
+      : [toItem(row)];
+  });
+};
+
+/* Draft and review state on the row itself, so a queue can be triaged without opening anything. */
+const describePr = (row: {
+  isDraft: boolean;
+  reviewDecision: string | undefined;
+  local: boolean;
+}) =>
+  [
+    row.isDraft ? "draft" : undefined,
+    row.reviewDecision === "APPROVED"
+      ? "approved"
+      : row.reviewDecision === "CHANGES_REQUESTED"
+        ? "changes requested"
+        : row.reviewDecision === "REVIEW_REQUIRED"
+          ? "review required"
+          : undefined,
+    row.local ? "worktree open" : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
 type NoteItem = vscode.QuickPickItem & { noteAction: NoteAction };
 
@@ -299,7 +356,7 @@ const showSwitcher = async ({
   let active: PickerContext = initialContext;
   let issueRows: CachedRow[] = [];
   let issueNote: Note | undefined;
-  let prRows: { number: number; title: string; branch: string; url: string }[] = [];
+  let prRows: PrRow[] = [];
   let prNote: Note | undefined;
   /* Drops a response that lands after a newer one. VS Code does not debounce and a slow reply can
      arrive after the context has already changed, painting the wrong list. */
@@ -354,8 +411,8 @@ const showSwitcher = async ({
       ...(active === "prs"
         ? [
             ...(prNote ? [noteRow(prNote)] : []),
-            ...withLocalSeparator(
-              byLocalFirst(
+            ...withGroupSeparators(
+              byGroupThenLocal(
                 prRows.map((row) => ({
                   ...row,
                   local: worktrees.some((worktree) => worktree.branch === row.branch),
@@ -363,10 +420,8 @@ const showSwitcher = async ({
               ),
               (row) => ({
                 label: `${row.local ? "$(check)" : "$(circle-outline)"} #${row.number} ${row.title}`,
-                description: row.branch,
-                detail: row.local
-                  ? undefined
-                  : "Opens the PR — checkout is the GitHub extension's job",
+                description: describePr(row),
+                detail: row.branch,
                 prBranch: row.branch,
                 prUrl: row.url,
               }),
@@ -398,6 +453,8 @@ const showSwitcher = async ({
 
     const mine = ++generation;
     picker.busy = true;
+    if (issueRows.length) issueNote = { label: "$(sync~spin) Refreshing…" };
+    refresh();
     try {
       const issues = await fetchMyIssues(context);
       if (mine !== generation) return;
@@ -429,6 +486,16 @@ const showSwitcher = async ({
   };
 
   const loadPrs = async () => {
+    const prKey = `prs:${cwd}`;
+    /* Cached first paint, same contract as the Linear context: the list appears immediately and is
+       replaced when fresh data lands, rather than showing an empty picker for half a second. */
+    const cachedPrs = readPrCache<PrRow>({ context, key: prKey });
+    if (cachedPrs) {
+      prRows = cachedPrs.rows;
+      prNote = { label: `$(history) as of ${describeAge(cachedPrs.at, Date.now())}` };
+      refresh();
+    }
+
     const remote = parseRemote(await originUrl(cwd));
     if (!remote) {
       /* Not recoverable by signing in — offering it would send the user through an auth flow
@@ -448,16 +515,22 @@ const showSwitcher = async ({
     }
     const mine = ++generation;
     picker.busy = true;
+    if (prRows.length) prNote = { label: "$(sync~spin) Refreshing…" };
+    refresh();
     try {
-      const prs = await fetchReviewRequested(remote);
+      const prs = await fetchPullRequests(remote);
       if (mine !== generation) return;
       prRows = prs.map((pr) => ({
         number: pr.number,
         title: pr.title,
         branch: pr.headRefName,
         url: pr.url,
+        group: pr.group,
+        isDraft: pr.isDraft,
+        reviewDecision: pr.reviewDecision,
       }));
-      prNote = prRows.length ? undefined : { label: "$(inbox) Nothing is waiting on your review" };
+      prNote = prRows.length ? undefined : { label: "$(inbox) No open pull requests" };
+      await writePrCache({ context, key: prKey, rows: prRows });
       refresh();
     } catch (error) {
       if (mine !== generation) return;

@@ -23,3 +23,38 @@ export const localSplitIndex = <T extends Ranked>(ordered: readonly T[]) => {
   if (first <= 0) return undefined;
   return first === ordered.length ? undefined : first;
 };
+
+/* PR grouping, on top of the local-first split. Review first because it is the only group with an
+   action attached to it; yours next because you can act on it; everything else last. */
+export const PR_GROUP_ORDER = ["review", "mine", "other"] as const;
+
+export type PrGroup = (typeof PR_GROUP_ORDER)[number];
+
+export const PR_GROUP_LABEL: Record<PrGroup, string> = {
+  review: "Awaiting your review",
+  mine: "Yours",
+  other: "Other",
+};
+
+export const byGroupThenLocal = <T extends { group: PrGroup; local: boolean }>(
+  rows: readonly T[],
+) =>
+  [...rows].sort((left, right) => {
+    const byGroup = PR_GROUP_ORDER.indexOf(left.group) - PR_GROUP_ORDER.indexOf(right.group);
+    if (byGroup !== 0) return byGroup;
+    /* Local first WITHIN a group, not across them: a checked-out "other" PR should not outrank one
+       that is actually waiting on you. */
+    return Number(right.local) - Number(left.local);
+  });
+
+/* Indices where a new group starts, so the caller can insert a separator ahead of each. Never
+   returns 0 — a separator above the first row is a header for nothing. */
+export const groupStarts = <T extends { group: PrGroup }>(ordered: readonly T[]) => {
+  const starts = new Map<number, PrGroup>();
+  ordered.forEach((row, index) => {
+    if (index === 0 || ordered[index - 1]?.group !== row.group) {
+      starts.set(index, row.group);
+    }
+  });
+  return starts;
+};

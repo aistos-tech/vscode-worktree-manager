@@ -55,3 +55,55 @@ describe("localSplitIndex", () => {
     expect(localSplitIndex([])).toBeUndefined();
   });
 });
+
+import { byGroupThenLocal, groupStarts, PR_GROUP_LABEL } from "./order";
+
+const pr = (id: string, group: "review" | "mine" | "other", local = false) => ({
+  id,
+  group,
+  local,
+});
+
+describe("byGroupThenLocal", () => {
+  test("orders review, then yours, then other", () => {
+    const ordered = byGroupThenLocal([pr("c", "other"), pr("a", "review"), pr("b", "mine")]);
+    expect(ordered.map((row) => row.id)).toEqual(["a", "b", "c"]);
+  });
+
+  /* Local-first applies WITHIN a group, never across: a checked-out "other" PR must not outrank
+     one that is actually waiting on you. */
+  test("does not let a local row jump its group", () => {
+    const ordered = byGroupThenLocal([pr("local-other", "other", true), pr("review", "review")]);
+    expect(ordered.map((row) => row.id)).toEqual(["review", "local-other"]);
+  });
+
+  test("puts local first inside a group", () => {
+    const ordered = byGroupThenLocal([pr("a", "mine"), pr("b", "mine", true)]);
+    expect(ordered.map((row) => row.id)).toEqual(["b", "a"]);
+  });
+
+  test("preserves incoming order for equal group and locality", () => {
+    const ordered = byGroupThenLocal([pr("a", "mine"), pr("b", "mine"), pr("c", "mine")]);
+    expect(ordered.map((row) => row.id)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("groupStarts", () => {
+  test("marks the first row of each group", () => {
+    const starts = groupStarts([pr("a", "review"), pr("b", "mine"), pr("c", "mine")]);
+    expect([...starts.entries()]).toEqual([
+      [0, "review"],
+      [1, "mine"],
+    ]);
+  });
+
+  test("labels every group", () => {
+    expect(PR_GROUP_LABEL.review).toBe("Awaiting your review");
+    expect(PR_GROUP_LABEL.mine).toBe("Yours");
+    expect(PR_GROUP_LABEL.other).toBe("Other");
+  });
+
+  test("handles an empty list", () => {
+    expect(groupStarts([]).size).toBe(0);
+  });
+});

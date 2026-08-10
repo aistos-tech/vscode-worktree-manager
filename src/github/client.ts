@@ -50,11 +50,16 @@ export const fetchPullRequests = async ({ owner, name }: { owner: string; name: 
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      /* `viewer` rides along in the same round trip: classifying "mine" needs the login, and a
-         second request for it would double the latency of the whole context. */
-      query: `query PullRequests($q: String!) {
+      /* TWO aliased searches in ONE round trip, plus `viewer`. Reading `reviewRequests` off each
+         PR instead would be wrong: `requestedReviewer` is a union of User, Team, Bot and Mannequin,
+         so a review requested from a TEAM you belong to — the normal case on a team repo — carries
+         no `login` to match against and would silently land in "Other" rather than your queue.
+         GitHub resolves team membership server-side for the `review-requested:@me` qualifier, so
+         asking it directly is both correct and cheaper than fetching the viewer's team list under
+         a `read:org` scope this extension does not request. */
+      query: `query PullRequests($all: String!, $review: String!) {
         viewer { login }
-        search(type: ISSUE, query: $q, first: 100) {
+        all: search(type: ISSUE, query: $all, first: 100) {
           nodes {
             ... on PullRequest {
               number
@@ -64,18 +69,20 @@ export const fetchPullRequests = async ({ owner, name }: { owner: string; name: 
               isDraft
               reviewDecision
               author { login }
-              reviewRequests(first: 20) {
-                nodes { requestedReviewer { ... on User { login } } }
-              }
             }
           }
+        }
+        review: search(type: ISSUE, query: $review, first: 100) {
+          nodes { ... on PullRequest { number } }
         }
       }`,
       variables: {
         /* Every open PR, not just the review queue. The queue is surfaced by ORDERING — it is the
            first group — rather than by exclusion, so the rest stay reachable instead of invisible.
-           100 is the search page cap and comfortably above this repo's ~35. */
-        q: `repo:${owner}/${name} is:open is:pr`,
+           100 is the search page cap, comfortably above this repo's ~35; beyond that the tail is
+           dropped rather than paged, which is a limit worth knowing rather than hiding. */
+        all: `repo:${owner}/${name} is:open is:pr`,
+        review: `repo:${owner}/${name} is:open is:pr review-requested:@me`,
       },
     }),
   });
@@ -91,7 +98,7 @@ export const fetchPullRequests = async ({ owner, name }: { owner: string; name: 
   const body = payload as {
     data?: {
       viewer?: { login?: string };
-      search: {
+      all: {
         nodes: {
           number?: number;
           title?: string;
@@ -100,11 +107,9 @@ export const fetchPullRequests = async ({ owner, name }: { owner: string; name: 
           isDraft?: boolean;
           reviewDecision?: string | null;
           author?: { login?: string } | null;
-          reviewRequests?: {
-            nodes: { requestedReviewer?: { login?: string } | null }[];
-          } | null;
         }[];
       };
+      review: { nodes: { number?: number }[] };
     };
     errors?: { message: string }[];
   };
@@ -114,11 +119,12 @@ export const fetchPullRequests = async ({ owner, name }: { owner: string; name: 
   if (!body.data) throw new GitHubError("GitHub returned no data.");
 
   const viewer = body.data.viewer?.login;
-  return body.data.search.nodes.flatMap<PullRequest>((node) => {
+  const awaitingReview = new Set(
+    body.data.review.nodes.map((node) => node.number).filter((n) => n !== undefined),
+  );
+  return body.data.all.nodes.flatMap<PullRequest>((node) => {
     if (node.number === undefined || !node.headRefName) return [];
-    const requested = (node.reviewRequests?.nodes ?? []).some(
-      (entry) => entry.requestedReviewer?.login === viewer,
-    );
+    const requested = awaitingReview.has(node.number);
     const author = node.author?.login ?? "?";
     /* Review beats authorship: a PR you opened and were also asked to review belongs in the queue,
        because the queue is the group with an action attached to it. */

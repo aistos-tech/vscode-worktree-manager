@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { trace } from "../trace";
 
 /* `'github'` is a BUILT-IN provider id, so this needs no extension dependency, no client secret, no
    UriHandler and no refresh handling — the whole of Linear's C3 problem, absent. */
@@ -86,6 +87,8 @@ export const fetchPullRequests = async ({ owner, name }: { owner: string; name: 
       },
     }),
   });
+
+  trace(`github: pull-request query — HTTP ${response.status}`);
 
   if (response.status === 401) {
     throw new GitHubError("GitHub rejected the session. Sign in again.");

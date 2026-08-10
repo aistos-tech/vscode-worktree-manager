@@ -2,8 +2,37 @@ import { execFile } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
+import { trace } from "./trace";
 
-const execFileAsync = promisify(execFile);
+const rawExecFile = promisify(execFile);
+
+/* EVERY git call goes through here, and nothing in this file calls `rawExecFile` directly.
+   A wrapper rather than a log line per call site: eleven call sites is eleven chances to add the
+   next one without logging, and the one that matters is always the one nobody instrumented.
+
+   It logs the exit code and stderr on failure because that is what a git problem actually says —
+   `git worktree add` refusing a branch, a dirty tree, a missing ref. Before this, a git failure
+   surfaced as a message with no command attached, and a git failure that a caller caught and
+   turned into `false` — `branchExistsAnywhere` does exactly that — left no trace at all.
+
+   ⚠️ Args are logged verbatim, and that is safe HERE because git takes no credentials on its
+   command line in this extension: no tokens, no URLs with userinfo, only paths, refs and branch
+   names. `linear/oauth.ts` is where a secret could reach a log, and it does not use this. */
+const git = async (args: string[], options: { cwd: string; maxBuffer?: number }) => {
+  const started = Date.now();
+  const label = `git ${args.join(" ")}`;
+  try {
+    const result = await rawExecFile("git", args, options);
+    trace(`${label} — ok in ${Date.now() - started}ms (cwd ${options.cwd})`);
+    return result;
+  } catch (error) {
+    const code = (error as { code?: number | string }).code ?? "?";
+    trace(
+      `${label} — FAILED exit=${code} in ${Date.now() - started}ms (cwd ${options.cwd})\n  ${stderrOf(error)}`,
+    );
+    throw error;
+  }
+};
 
 export const MAIN_WORKTREE_ID = "__main__";
 
@@ -93,13 +122,13 @@ export const parseWorktree = (fields: string[]) => {
    but only for that specific rejection: any other git failure must still propagate. */
 const readWorktreeRecords = async (cwd: string) => {
   try {
-    const { stdout } = await execFileAsync("git", ["worktree", "list", "--porcelain", "-z"], {
+    const { stdout } = await git(["worktree", "list", "--porcelain", "-z"], {
       cwd,
     });
     return stdout.split("\0\0").map((record) => record.split("\0"));
   } catch (error) {
     if (!/unknown (switch|option)/i.test(stderrOf(error))) throw error;
-    const { stdout } = await execFileAsync("git", ["worktree", "list", "--porcelain"], { cwd });
+    const { stdout } = await git(["worktree", "list", "--porcelain"], { cwd });
     return stdout.split("\n\n").map((record) => record.split("\n"));
   }
 };
@@ -112,10 +141,9 @@ export const listWorktrees = async (cwd: string) => {
 export const isNotARepo = (error: unknown) => /not a git repository/i.test(stderrOf(error));
 
 export const moveWorktree = ({ from, to, gitCwd }: { from: string; to: string; gitCwd: string }) =>
-  execFileAsync("git", ["worktree", "move", from, to], { cwd: gitCwd });
+  git(["worktree", "move", from, to], { cwd: gitCwd });
 
-export const pruneWorktrees = (gitCwd: string) =>
-  execFileAsync("git", ["worktree", "prune"], { cwd: gitCwd });
+export const pruneWorktrees = (gitCwd: string) => git(["worktree", "prune"], { cwd: gitCwd });
 
 export const removeWorktreeAt = ({
   path,
@@ -126,12 +154,12 @@ export const removeWorktreeAt = ({
   gitCwd: string;
   force: boolean;
 }) =>
-  execFileAsync("git", ["worktree", "remove", ...(force ? ["--force"] : []), path], {
+  git(["worktree", "remove", ...(force ? ["--force"] : []), path], {
     cwd: gitCwd,
   });
 
 export const describeDirt = async (worktreePath: string) => {
-  const { stdout } = await execFileAsync("git", ["status", "--porcelain"], {
+  const { stdout } = await git(["status", "--porcelain"], {
     cwd: worktreePath,
   });
   const lines = stdout.split("\n").filter(Boolean);
@@ -142,7 +170,7 @@ export const describeDirt = async (worktreePath: string) => {
 export const branchExistsAnywhere = async (branch: string, gitCwd: string) => {
   const verify = async (ref: string) => {
     try {
-      await execFileAsync("git", ["show-ref", "--verify", "--quiet", ref], { cwd: gitCwd });
+      await git(["show-ref", "--verify", "--quiet", ref], { cwd: gitCwd });
       return true;
     } catch {
       return false;
@@ -154,8 +182,7 @@ export const branchExistsAnywhere = async (branch: string, gitCwd: string) => {
 };
 
 export const listBranches = async (gitCwd: string) => {
-  const { stdout } = await execFileAsync(
-    "git",
+  const { stdout } = await git(
     ["for-each-ref", "--sort=-committerdate", "refs/heads", "--format=%(refname:short)"],
     { cwd: gitCwd },
   );
@@ -163,7 +190,7 @@ export const listBranches = async (gitCwd: string) => {
 };
 
 export const currentBranch = async (gitCwd: string) => {
-  const { stdout } = await execFileAsync("git", ["branch", "--show-current"], { cwd: gitCwd });
+  const { stdout } = await git(["branch", "--show-current"], { cwd: gitCwd });
   return stdout.trim();
 };
 
@@ -183,8 +210,7 @@ export const addWorktree = ({
   source: string | undefined;
   gitCwd: string;
 }) =>
-  execFileAsync(
-    "git",
+  git(
     source === undefined
       ? ["worktree", "add", dest, branch]
       : ["worktree", "add", "-b", branch, dest, source],
@@ -193,7 +219,7 @@ export const addWorktree = ({
 
 export const originUrl = async (gitCwd: string) => {
   try {
-    const { stdout } = await execFileAsync("git", ["config", "--get", "remote.origin.url"], {
+    const { stdout } = await git(["config", "--get", "remote.origin.url"], {
       cwd: gitCwd,
     });
     return stdout.trim();

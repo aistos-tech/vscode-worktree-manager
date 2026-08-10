@@ -1,4 +1,5 @@
 import type * as vscode from "vscode";
+import { trace } from "../trace";
 import { linearToken } from "./auth";
 
 const ENDPOINT = "https://api.linear.app/graphql";
@@ -48,6 +49,8 @@ const request = async <T>({
     },
     body: JSON.stringify({ query, variables }),
   });
+
+  trace(`linear: graphql — HTTP ${response.status}`);
 
   if (response.status === 401 || response.status === 403) {
     throw new LinearError("Linear rejected the credential (401). Sign in again.");

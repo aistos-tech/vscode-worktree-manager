@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { trace } from "./trace";
 
 export const HOOK_TASK_TYPE = "worktreeManager.hook";
 
@@ -64,6 +65,10 @@ export const runHook = ({ command, cwd, env, name }: RunHookProps) => {
       settled = true;
       endProcess.dispose();
       endTask.dispose();
+      /* Logged at the single point every path converges on, including the `undefined` one. A hook
+         that never reported an exit code is the case worth seeing: it is treated as failure on
+         purpose, and from the outside it is indistinguishable from a hook that genuinely failed. */
+      trace(`hook "${name}" finished — exit=${code ?? "<none reported>"}: ${command}`);
       resolve(code);
     };
 

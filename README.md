@@ -594,6 +594,25 @@ Those launches now go through a wrapper that cannot swallow a rejection: it logs
 raises a toast naming the operation, with a **Show Logs** button on it. So a failure announces
 itself whether or not the channel is open.
 
+What gets traced, at `Trace`/`Debug` level:
+
+| Boundary | Line |
+|---|---|
+| every git call | `git worktree add … — ok in 34ms (cwd …)`, or `— FAILED exit=128 …` with git's stderr |
+| every hook run | `hook "postCreate" finished — exit=0: bun run worktree-hook …` |
+| GitHub / Linear | the HTTP status of each query |
+| the picker | which row kind was accepted, its branch, and whether a local worktree matched |
+
+⚠️ **Every git call goes through one wrapper, and nothing in `worktree.ts` calls `execFile`
+directly.** Eleven call sites is eleven chances to add a twelfth without logging, and the one that
+matters is always the one nobody instrumented. A git failure a caller deliberately swallows —
+`branchExistsAnywhere` turns one into `false` on purpose — still leaves a line.
+
+`worktree.ts` writes through a callback rather than importing the log channel, because it must stay
+free of `vscode`: `bun test` cannot import a module that imports `vscode`, and the porcelain
+parsing in there is the code most worth proving. `src/trace.ts` is that seam, and `initLog`
+installs the real sink.
+
 ## Package
 
 ```bash

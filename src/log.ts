@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { setTrace } from "./trace";
 
 /* The extension's only log surface. It did not have one until 0.33.0, and the absence had a cost:
    a PR row whose worktree creation threw produced NOTHING — no dialog, no output, no trace — because
@@ -14,6 +15,11 @@ let channel: vscode.LogOutputChannel | undefined;
 export const initLog = (context: vscode.ExtensionContext) => {
   channel = vscode.window.createOutputChannel("Aistos", { log: true });
   context.subscriptions.push(channel);
+  /* `worktree.ts` holds every git call and must stay vscode-free so `bun test` can import it, so it
+     writes through a callback instead of importing this file. This is where that callback is
+     installed; without this line the git trace is silently a no-op, which is the failure mode the
+     whole file exists to remove. */
+  setTrace((message) => channel?.debug(message));
   return channel;
 };
 

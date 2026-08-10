@@ -90,7 +90,7 @@ const loadWorktrees = async ({ cwd, announce }: LoadWorktreesProps) => {
     return await listWorktrees(cwd);
   } catch (error) {
     if (announce || !isNotARepo(error)) {
-      vscode.window.showErrorMessage(`Worktree Manager: ${stderrOf(error)}`);
+      vscode.window.showErrorMessage(`Aistos: ${stderrOf(error)}`);
     }
     return [];
   }
@@ -837,7 +837,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
 
   const requireRoot = () => {
     if (root) return root;
-    vscode.window.showWarningMessage("Worktree Manager: no folder open.");
+    vscode.window.showWarningMessage("Aistos: no folder open.");
     return undefined;
   };
 
@@ -846,7 +846,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
     if (!cwd) return undefined;
     const resolved = await withCurrentWorktree({ root: cwd, announce: true });
     if (!resolved) {
-      vscode.window.showWarningMessage("Worktree Manager: this folder is not a git worktree.");
+      vscode.window.showWarningMessage("Aistos: this folder is not a git worktree.");
       return undefined;
     }
     return resolved;
@@ -928,7 +928,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
     vscode.commands.registerCommand(FORGET_APPROVAL_COMMAND, async () => {
       const approvals = listApprovals(context);
       if (approvals.length === 0) {
-        vscode.window.showInformationMessage("Worktree Manager: no hook approvals are stored.");
+        vscode.window.showInformationMessage("Aistos: no hook approvals are stored.");
         return;
       }
       const picked = await vscode.window.showQuickPick(
@@ -947,7 +947,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
     vscode.commands.registerCommand(LIST_APPROVALS_COMMAND, () => {
       const approvals = listApprovals(context);
       if (approvals.length === 0) {
-        vscode.window.showInformationMessage("Worktree Manager: no hook approvals are stored.");
+        vscode.window.showInformationMessage("Aistos: no hook approvals are stored.");
         return;
       }
       const lines = approvals.map((entry) => `${entry.path}\n  ${entry.approval?.command ?? "?"}`);
@@ -1048,7 +1048,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
     vscode.StatusBarAlignment.Left,
     100,
   );
-  item.name = "Worktree";
+  item.name = "Aistos Worktree";
 
   const render = () =>
     renderStatus({
@@ -1073,7 +1073,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
       });
       if (!identifier) {
         vscode.window.showInformationMessage(
-          'Worktree Manager: no Linear issue on this branch. Bind one with "Worktree: Bind Linear Issue…".',
+          'Aistos: no Linear issue on this branch. Bind one with "Aistos: Bind Linear Issue…".',
         );
         return;
       }

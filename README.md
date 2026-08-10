@@ -1,6 +1,12 @@
-# Worktree Manager
+# Aistos
 
-Per-worktree identity and fast switching for git worktrees in VS Code.
+Worktrees, Linear issues and pull requests in one switcher, with per-repo bootstrap hooks.
+
+Shown in VS Code as **Aistos**; every command is under the `Aistos:` category in the palette.
+
+📌 **The extension *identifier* is still `aistos-tech.vscode-worktree-manager`, and the settings are
+still `worktreeManager.*`.** Only the display name changed, and deliberately — see
+[Naming](#naming).
 
 ## What it does
 
@@ -15,23 +21,23 @@ Per-worktree identity and fast switching for git worktrees in VS Code.
   survives `git worktree move` — the worktree folder's own timestamps do not.
 - **Pins** — pin/unpin from the button on each quick pick row. Stored in `globalState`, keyed by
   the git admin directory name, which survives `git worktree move`.
-- **Rename** — `Worktree: Rename…`, or the pencil button on any quick pick row. Runs
+- **Rename** — `Aistos: Rename Worktree…`, or the pencil button on any quick pick row. Runs
   `git worktree move`, then reopens the window if you renamed the one you're in. The VS Code
   title follows automatically, since the default `window.title` contains `${rootName}`.
   Pin and colour survive, because they key on the admin directory rather than the folder name.
-- **Delete** — `Worktree: Delete…`, or the trash button on any quick pick row. Runs the repo's
+- **Delete** — `Aistos: Delete Worktree…`, or the trash button on any quick pick row. Runs the repo's
   `preDelete` hook if it has one, then `git worktree remove`, behind a modal confirmation that
   names the hook command. A **locked** worktree is refused before anything runs. A **prunable**
   one — directory already gone — offers to clear its git registration instead, since there is
   nothing left to tear down. Uncommitted changes are listed and consented to *before* the hook
   runs, not after git refuses. The branch is always kept. Deleting the worktree you're in reopens
   the window at the primary worktree. Pin and colour entries are released.
-- **Create** — `Worktree: Create…`, or the `$(add)` row in the switcher. Prompts for a branch, a
+- **Create** — `Aistos: Create Worktree…`, or the `$(add)` row in the switcher. Prompts for a branch, a
   source to fork from (skipped when the branch already exists), and a destination, then runs the
   repo's `postCreate` hook and offers **Open** / **Open in New Window** / **Stay**. The create row's
   label embeds whatever you typed, so it stays visible while the list filters — a static row is
   hidden exactly when you want it.
-- **Bootstrap** — `Worktree: Bootstrap…`, or the `$(sync)` button on a switcher row. Re-runs the
+- **Bootstrap** — `Aistos: Bootstrap Worktree…`, or the `$(sync)` button on a switcher row. Re-runs the
   repo's `postCreate` hook against a worktree that already exists: the recovery path for a failed
   create, a failed delete, and worktrees made by agent tooling outside the editor. Offered only when
   the repo *has* a `postCreate` hook, and never on the primary worktree's row.
@@ -46,13 +52,13 @@ Per-worktree identity and fast switching for git worktrees in VS Code.
   picker is replaced by a popup showing that branch's Linear issue; the platform Back binding
   (`ctrl+-` on macOS) or Escape returns you to the list with the same row still highlighted.
 - **Linear badge** — when a branch is named after a Linear issue, the status bar shows its
-  identifier and the tooltip links to it. `Worktree: Open Linear Issue` opens it;
-  `Worktree: Bind Linear Issue…` sets one by hand for a branch that carries none. No credentials
+  identifier and the tooltip links to it. `Aistos: Open Linear Issue` opens it;
+  `Aistos: Bind Linear Issue…` sets one by hand for a branch that carries none. No credentials
   and no network — the link is already in the branch name.
 - **Per-repo hooks** — a repo can bind a command to run after a worktree is created and before one
   is deleted. See below.
-- **Hook approvals** — `Worktree: List Hook Approvals` shows what you have approved;
-  `Worktree: Forget Hook Approval…` revokes one.
+- **Hook approvals** — `Aistos: List Hook Approvals` shows what you have approved;
+  `Aistos: Forget Hook Approval…` revokes one.
 
 ## Per-repo hooks
 
@@ -130,7 +136,7 @@ belongs to the repo.
 | Branch | Existing branch → checkout mode. New name → create mode, and you pick a source. |
 | Already checked out | Refused up front, naming the worktree that holds it. |
 | Destination | Defaults to `<worktreesRoot>/<branch basename>`. An existing path is rejected in the input box. |
-| `postCreate` | Runs before the open prompt. A failure keeps the worktree and points at `Worktree: Bootstrap…`. |
+| `postCreate` | Runs before the open prompt. A failure keeps the worktree and points at `Aistos: Bootstrap Worktree…`. |
 
 ⚠️ **A non-zero `git worktree add` does not mean nothing happened.** If the repo's `post-checkout`
 hook fails, git exits 1 *having already created and registered the worktree* — and a fresh worktree
@@ -201,7 +207,7 @@ you already have a worktree for come first. Measured on this repo:
 scrolling exercise rather than a queue.
 
 GitHub authentication is free: `'github'` is a built-in provider id, so there is no extension
-dependency, no client secret, no URI handler and no refresh handling. `Worktree: Sign in to GitHub`
+dependency, no client secret, no URI handler and no refresh handling. `Aistos: Sign in to GitHub`
 if you have not already.
 
 **Read-only, deliberately.** `✓` switches to the worktree you already have for that PR's branch;
@@ -251,7 +257,7 @@ Two ways, and which one you get depends on whether `worktreeManager.linear.clien
 
 **OAuth (preferred).** Create an app at `linear.app/settings/api/applications/new`, register the
 redirect URI as **exactly** `http://127.0.0.1:47823/callback`, and put its client id in the setting.
-`Worktree: Sign in to Linear` then opens your browser, and signing out actually **revokes** the
+`Aistos: Sign in to Linear` then opens your browser, and signing out actually **revokes** the
 authorisation at Linear rather than just forgetting it locally.
 
 There is no client *secret* to configure. PKCE makes one unnecessary, and a `.vsix` is a zip anyone
@@ -285,7 +291,7 @@ front.
 ⚠️ **`SecretStorage` does not sync across machines.** On a second machine Linear is simply
 unconfigured until you sign in there too. That is by design, and it will otherwise read as a bug.
 
-`Worktree: Sign out of Linear` deletes the key **and** every cache it filled, in one act. A
+`Aistos: Sign out of Linear` deletes the key **and** every cache it filled, in one act. A
 credential revoked while the ticket bodies it fetched stay on disk is the failure that matters here:
 issue text in this workspace carries personal data.
 
@@ -332,7 +338,7 @@ committed `bun.lock` and CI's `--frozen-lockfile` keep a local install from drif
 ### The issue sidebar
 
 ⚠️ **It only exists once `worktreeManager.linear.workspace` is set** — the view's `when` clause is
-that setting, so with it empty there is no panel to find. `Worktree: Show Linear Issue Panel` is the
+that setting, so with it empty there is no panel to find. `Aistos: Show Linear Issue Panel` is the
 way in: it reveals the panel, or tells you what to configure if that is why it is missing.
 
 It lives in the **Source Control** container, so open that view rather than looking in the Explorer.
@@ -446,6 +452,20 @@ additionally reuses two of VS Code's **internal** context keys (`inputFocus`,
 renamed, `→` starts firing mid-word in the filter box. Degraded, not broken — and worth re-checking
 after a VS Code upgrade.
 
+## Naming
+
+The extension displays as **Aistos** and its commands sit under the `Aistos:` category. Three things
+did **not** change, each for a reason worth stating:
+
+| Unchanged | Why |
+|---|---|
+| `name` (and so the extension id `aistos-tech.vscode-worktree-manager`) | VS Code keys `globalState` and `SecretStorage` by extension id. Changing it discards your Linear session, every hook trust approval, the pin colours and both caches — and leaves the old extension installed alongside the new one, contributing a duplicate of every command and keybinding. |
+| `worktreeManager.*` setting keys | They are the repo↔editor contract. `debt-collection/.vscode/settings.json` binds `worktreeManager.hooks.preDelete`, and VS Code **silently ignores** settings it does not recognise — so a rename would stop the pre-delete hook firing for every teammate with no error, and each delete would go back to orphaning a stack. That is precisely the failure this extension exists to prevent. |
+| `worktreeManager.*` command ids | Anything a teammate has bound in `keybindings.json` keeps working. |
+
+Renaming any of them is possible, but it is a migration rather than an edit — ask if you want it and
+it should come with a settings-key alias that reads the old names for a release.
+
 ## Deliberately not included
 
 **Reading `tasks.json` instead of a settings string.** `${input:}` cannot be filled
@@ -510,11 +530,11 @@ the editor path fails:
 
 | Situation | Recovery |
 |---|---|
-| Create succeeded, hook failed | `Worktree: Bootstrap…`, or the repo's attach/bootstrap script |
-| Delete aborted after teardown ran | `Worktree: Bootstrap…` to rebuild the stack, or delete it again |
-| Worktree made outside the editor | `Worktree: Bootstrap…` — this is what it is for |
+| Create succeeded, hook failed | `Aistos: Bootstrap Worktree…`, or the repo's attach/bootstrap script |
+| Delete aborted after teardown ran | `Aistos: Bootstrap Worktree…` to rebuild the stack, or delete it again |
+| Worktree made outside the editor | `Aistos: Bootstrap Worktree…` — this is what it is for |
 | Stack orphaned by a bare `git worktree remove` | the repo's orphan-reclaim command |
-| Hook prompts you unexpectedly | `Worktree: List Hook Approvals` to see what is stored |
+| Hook prompts you unexpectedly | `Aistos: List Hook Approvals` to see what is stored |
 
 ## Package
 

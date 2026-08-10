@@ -193,7 +193,7 @@ export const createWorktree = async ({ context, gitCwd, worktrees, branchSeed }:
       /* Unlike preDelete, declining here is survivable: the worktree exists and is simply not
          bootstrapped, which is exactly what the bootstrap command is for. */
       vscode.window.showWarningMessage(
-        `Created ${dest} without running the post-create hook. Run "Worktree: Bootstrap…" when you want it.`,
+        `Created ${dest} without running the post-create hook. Run "Aistos: Bootstrap Worktree…" when you want it.`,
       );
       return;
     }
@@ -212,7 +212,7 @@ export const createWorktree = async ({ context, gitCwd, worktrees, branchSeed }:
        bootstrap command is the retry. */
     if (exitCode !== 0) {
       vscode.window.showErrorMessage(
-        `Post-create hook failed (${describeExit(exitCode)}). ${dest} was created but is not bootstrapped — check the "worktree" task panel, then retry with "Worktree: Bootstrap…".`,
+        `Post-create hook failed (${describeExit(exitCode)}). ${dest} was created but is not bootstrapped — check the "aistos" task panel, then retry with "Aistos: Bootstrap Worktree…".`,
       );
       return;
     }

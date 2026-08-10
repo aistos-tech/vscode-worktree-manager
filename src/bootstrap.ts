@@ -62,7 +62,7 @@ export const bootstrapWorktree = async ({ context, worktree, primaryPath }: Boot
   const hook = resolveHook({ hook: "postCreate", primaryPath });
   if (!hook.command) {
     vscode.window.showInformationMessage(
-      "Worktree Manager: this repo has no post-create hook, so there is nothing to run.",
+      "Aistos: this repo has no post-create hook, so there is nothing to run.",
     );
     return;
   }
@@ -119,6 +119,6 @@ export const bootstrapWorktree = async ({ context, worktree, primaryPath }: Boot
     return;
   }
   vscode.window.showErrorMessage(
-    `Bootstrap of "${name}" failed (${describeExit(exitCode)}). It may be half-configured — check the "worktree" task panel.`,
+    `Bootstrap of "${name}" failed (${describeExit(exitCode)}). It may be half-configured — check the "aistos" task panel.`,
   );
 };

@@ -37,7 +37,8 @@ export const runHook = ({ command, cwd, env, name }: RunHookProps) => {
     { type: HOOK_TASK_TYPE, nonce },
     vscode.TaskScope.Workspace,
     name,
-    "worktree",
+    /* The task SOURCE, which is the group heading in the task panel and the terminal picker. */
+    "aistos",
     new vscode.ShellExecution(command, {
       cwd,
       /* ShellExecutionOptions.env is MERGED with the parent process environment, verbatim per the
@@ -95,7 +96,7 @@ export const runHook = ({ command, cwd, env, name }: RunHookProps) => {
 
     vscode.tasks.executeTask(task).then(undefined, (error: unknown) => {
       vscode.window.showErrorMessage(
-        `Worktree Manager: could not start the hook — ${error instanceof Error ? error.message : String(error)}`,
+        `Aistos: could not start the hook — ${error instanceof Error ? error.message : String(error)}`,
       );
       finish(undefined);
     });

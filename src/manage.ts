@@ -254,7 +254,7 @@ const runDelete = async ({
     });
     if (exitCode !== 0) {
       vscode.window.showErrorMessage(
-        `Pre-delete hook failed (${describeExit(exitCode)}) — "${name}" was NOT deleted. Check the "worktree" task panel, then retry or tear the stack down by hand.`,
+        `Pre-delete hook failed (${describeExit(exitCode)}) — "${name}" was NOT deleted. Check the "aistos" task panel, then retry or tear the stack down by hand.`,
       );
       return;
     }

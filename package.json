@@ -1,8 +1,8 @@
 {
   "name": "vscode-worktree-manager",
-  "displayName": "Worktree Manager",
-  "description": "Per-worktree identity and fast switching for git worktrees",
-  "version": "0.26.0",
+  "displayName": "Aistos",
+  "description": "Worktrees, Linear issues and pull requests in one switcher, with per-repo bootstrap hooks",
+  "version": "0.27.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -32,7 +32,7 @@
   ],
   "contributes": {
     "configuration": {
-      "title": "Worktree Manager",
+      "title": "Aistos",
       "properties": {
         "worktreeManager.hooks.postCreate": {
           "type": "string",
@@ -50,7 +50,7 @@
           "type": "string",
           "default": "",
           "scope": "window",
-          "markdownDescription": "Your Linear workspace slug — the `<workspace>` in `https://linear.app/<workspace>/issue/A-1661`. Required to build issue links, and not derivable: nothing in an issue identifier yields it, and team keys are unique only within a workspace. Empty disables every Linear feature."
+          "markdownDescription": "Your Linear workspace slug \u2014 the `<workspace>` in `https://linear.app/<workspace>/issue/A-1661`. Required to build issue links, and not derivable: nothing in an issue identifier yields it, and team keys are unique only within a workspace. Empty disables every Linear feature."
         },
         "worktreeManager.linear.openIn": {
           "type": "string",
@@ -66,13 +66,13 @@
           "type": "string",
           "default": "",
           "scope": "window",
-          "markdownDescription": "OAuth application client id from `linear.app/settings/api/applications/new`. Set it and sign-in uses OAuth with PKCE; leave it empty and sign-in asks for a personal API key instead.\n\nRegister the redirect URI as exactly `http://127.0.0.1:47823/callback`. A client id is public by design — there is no secret to configure, because PKCE makes one unnecessary and a `.vsix` could not keep one anyway."
+          "markdownDescription": "OAuth application client id from `linear.app/settings/api/applications/new`. Set it and sign-in uses OAuth with PKCE; leave it empty and sign-in asks for a personal API key instead.\n\nRegister the redirect URI as exactly `http://127.0.0.1:47823/callback`. A client id is public by design \u2014 there is no secret to configure, because PKCE makes one unnecessary and a `.vsix` could not keep one anyway."
         },
         "worktreeManager.linear.setStartedOnCreate": {
           "type": "boolean",
           "default": false,
           "scope": "window",
-          "markdownDescription": "Move a Linear issue to its team's first started status when a worktree is created for it — only when the issue is currently in triage, backlog or unstarted, so an issue already In Review is never dragged backwards. Defaults to **off**: it needs a write-capable credential, and that should be a choice you make rather than one a default install makes for you."
+          "markdownDescription": "Move a Linear issue to its team's first started status when a worktree is created for it \u2014 only when the issue is currently in triage, backlog or unstarted, so an issue already In Review is never dragged backwards. Defaults to **off**: it needs a write-capable credential, and that should be a choice you make rather than one a default install makes for you."
         },
         "worktreeManager.linear.teamKeys": {
           "type": "array",
@@ -81,7 +81,7 @@
           },
           "default": [],
           "scope": "window",
-          "markdownDescription": "Team keys this workspace issues, e.g. `[\"A\"]`. When set, a branch whose prefix is not one of them yields no badge — which is what stops `wip-2-something` rendering a confident link to a non-existent `WIP-2`. Empty accepts any identifier-shaped prefix."
+          "markdownDescription": "Team keys this workspace issues, e.g. `[\"A\"]`. When set, a branch whose prefix is not one of them yields no badge \u2014 which is what stops `wip-2-something` rendering a confident link to a non-existent `WIP-2`. Empty accepts any identifier-shaped prefix."
         },
         "worktreeManager.worktreesRoot": {
           "type": "string",
@@ -116,88 +116,109 @@
     "commands": [
       {
         "command": "worktreeManager.switch",
-        "title": "Worktree: Switch…"
+        "title": "Switch Worktree\u2026",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.showWorktrees",
-        "title": "Worktree: Show Worktrees"
+        "title": "Show Worktrees",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.showLinear",
-        "title": "Worktree: Show Linear Issues"
+        "title": "Show Linear Issues",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.showPRs",
-        "title": "Worktree: Show Pull Requests"
+        "title": "Show Pull Requests",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.create",
-        "title": "Worktree: Create…"
+        "title": "Create Worktree\u2026",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.github.signIn",
-        "title": "Worktree: Sign in to GitHub"
+        "title": "Sign in to GitHub",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.linear.signIn",
-        "title": "Worktree: Sign in to Linear"
+        "title": "Sign in to Linear",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.linear.signOut",
-        "title": "Worktree: Sign out of Linear"
+        "title": "Sign out of Linear",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.linear.previewIssue",
-        "title": "Worktree: Preview Row"
+        "title": "Preview Row",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.linear.previewBack",
-        "title": "Worktree: Close Preview"
+        "title": "Close Preview",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.linear.showIssue",
-        "title": "Worktree: Show Linear Issue Panel"
+        "title": "Show Linear Issue Panel",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.nextContext",
-        "title": "Worktree: Next Picker Context"
+        "title": "Next Picker Context",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.previousContext",
-        "title": "Worktree: Previous Picker Context"
+        "title": "Previous Picker Context",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.linear.refreshIssue",
-        "title": "Worktree: Refresh Linear Issue",
-        "icon": "$(refresh)"
+        "title": "Refresh Linear Issue",
+        "icon": "$(refresh)",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.linear.openIssue",
-        "title": "Worktree: Open Linear Issue"
+        "title": "Open Linear Issue",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.linear.bindIssue",
-        "title": "Worktree: Bind Linear Issue…"
+        "title": "Bind Linear Issue\u2026",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.bootstrap",
-        "title": "Worktree: Bootstrap…"
+        "title": "Bootstrap Worktree\u2026",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.hooks.forget",
-        "title": "Worktree: Forget Hook Approval…"
+        "title": "Forget Hook Approval\u2026",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.hooks.listApprovals",
-        "title": "Worktree: List Hook Approvals"
+        "title": "List Hook Approvals",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.rename",
-        "title": "Worktree: Rename…"
+        "title": "Rename Worktree\u2026",
+        "category": "Aistos"
       },
       {
         "command": "worktreeManager.delete",
-        "title": "Worktree: Delete…"
+        "title": "Delete Worktree\u2026",
+        "category": "Aistos"
       }
     ],
     "keybindings": [

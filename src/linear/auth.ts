@@ -152,7 +152,7 @@ export const signIn = async (context: vscode.ExtensionContext) => {
       "worktreeManager.linear.clientId",
     );
     vscode.window.showInformationMessage(
-      `Register the redirect URI as exactly ${redirectUri()}, paste the client id into the setting, then run "Worktree: Sign in to Linear" again.`,
+      `Register the redirect URI as exactly ${redirectUri()}, paste the client id into the setting, then run "Aistos: Sign in to Linear" again.`,
     );
     return undefined;
   }

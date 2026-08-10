@@ -17,7 +17,7 @@ import {
 } from "./linear/badge";
 import { fetchMyIssues, LinearError } from "./linear/client";
 import { issueIdFor } from "./linear/id";
-import { showPreviewModal } from "./linear/preview";
+import { showPreviewPanel } from "./linear/panel";
 import { escapeIcons } from "./linear/text";
 import { createIssueView, ISSUE_VIEW_ID, type IssueView } from "./linear/view";
 import { deleteWorktree, renameWorktree } from "./manage";
@@ -738,16 +738,14 @@ const showSwitcher = async ({
 
     /* The modal takes focus, so the picker hides on the way in. Flagged, because the picker's own
        onDidHide would otherwise dispose the instance we are about to bring back. */
-    /* Points the sidebar at this row BEFORE the modal opens, so closing the modal leaves the fully
-       rendered ticket — markdown, checklists, images — sitting behind it. The modal is the glance;
-       the panel is the read, and a modal body is plain text by API. */
-    if (identifier) void issuePanel?.follow(identifier);
-
+    /* The panel opens as an editor tab and takes focus, so the picker hides on the way in.
+       Flagged, because the picker's own onDidHide would otherwise dispose the instance we bring
+       back afterwards. */
     const restore = picker.activeItems;
     handingOverToPreview = true;
     await exitPicker();
 
-    const action = await showPreviewModal({
+    const action = await showPreviewPanel({
       context,
       target: {
         identifier,
@@ -761,7 +759,7 @@ const showSwitcher = async ({
     /* Re-assigning `items` is what actually repaints the list, and it is not optional.
        `QuickPick.show()` sends only `{ visible: true }` over the ext-host protocol — it never
        re-sends items — and the quick-input widget is a SINGLETON whose item list was replaced when
-       the modal's dialog took over. Restoring only `activeItems`, as this used to, brought the
+       another surface took it over. Restoring only `activeItems`, as this used to, brought the
        picker back completely empty. */
     const comeBack = () => {
       handingOverToPreview = true;

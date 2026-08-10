@@ -375,6 +375,244 @@ embedding a remote image.
 you reached it from: a unit of work that may have a worktree, a Linear issue and a pull request.
 Showing a different subset per tab would make the gesture's result depend on where you came from.
 
+It is a **webview panel** using the **same renderer as the sidebar** — the same markdown, the same
+CSP, the same images. It scrolls, so nothing is truncated: full description, full comment thread.
+
+```
+┌─ A-1661 ────────────────────────────────────┐
+│ A-1661                                      │
+│ Import mapping for the onboarding         │
+│ [In Progress] Thibault · PR #421 open       │
+│                                             │
+│ Le fichier d'import arrive avec des        │
+│ colonnes déjà partiellement normali…          │
+│  ☑ mapping des colonnes du CSV              │
+│  ☐ règle de rapprochement                   │
+│  ┌───────────────────┐                      │
+│  │  screenshot.png   │   ← real image       │
+│  └───────────────────┘                      │
+│  ── 3 comments ──                           │
+│  Thibault · 2d   On garde le scope invoice… │  ↕ scrolls
+├─────────────────────────────────────────────┤
+│ [Open worktree O] [Open in Linear L] [PR P] │  ← footer
+└─────────────────────────────────────────────┘
+```
+
+**Shortcuts are printed on the buttons.** `O` open worktree, `C` create worktree, `L` Linear, `P`
+the PR, `Escape` closes and returns you to the picker with the same row still highlighted. They are
+handled inside the page rather than as VS Code keybindings, because a webview holds focus while it
+is open and a `when`-scoped binding would need a context key per panel for no gain.
+
+It opens **beside** what you were reading rather than on top of it — the picker's job is to move
+you somewhere, and replacing the file you had open in order to preview a ticket is a poor trade.
+
+📌 **This replaced a native modal.** A modal's body is plain text by API — no markdown, no images,
+no links — so ticket content had to be flattened into an approximation and then truncated to stop
+the dialog outgrowing the screen. Two surfaces rendering the same ticket two different ways is the
+kind of difference nobody notices until it matters, so there is now one renderer and both use it.
+
+### The Linear context
+
+Lists the open issues assigned to you, **the ones you already have a worktree for first**, under a
+`Not checked out` separator. The point of the context is to get you into work, and the cheapest
+version of that is switching to something that already exists — a list that interleaves the three
+you can switch to with the twenty you would have to create buries the cheap action inside the
+expensive one. Within each group the server's order is preserved (Linear by `updatedAt`).
+
+A row carries `✓` when a worktree already exists for its branch — selecting it switches — and `○`
+when one does not, where selecting it creates one with the branch pre-filled.
+
+The branch name is taken from Linear's `branchName` **verbatim** and never rebuilt from a slug: that
+exact string is what Linear matches branches and PRs against, so regenerating it silently breaks the
+link the whole feature depends on.
+
+First paint comes from cache, so the context does not wait on the network, and a stale list says
+`as of 12m ago` rather than pretending to be fresh. A failed refetch keeps the cached rows and says
+so. An empty list is never used to mean "something went wrong" — a wrong credential says so in
+words, because "no issues assigned to you" is a different claim.
+
+⚠️ **The cache holds identifiers, titles, states and branch names — never issue bodies or
+comments.** `globalState` is plaintext in `state.vscdb` and is shared across remote hosts at the same
+repo path, and ticket bodies here carry personal data. A title is already visible in the
+picker; a description is a different exposure. Signing out deletes the cache in the same act as the
+credential.
+
+### The pull request context
+
+Lists what is **waiting on your review**, not every open PR — and, like the Linear context, the ones
+you already have a worktree for come first. Measured on this repo:
+`review-requested:@me` returns 3, all open PRs returns 35 — most of them your own, which is a
+scrolling exercise rather than a queue.
+
+GitHub authentication is free: `'github'` is a built-in provider id, so there is no extension
+dependency, no client secret, no URI handler and no refresh handling. `Aistos: Sign in to GitHub`
+if you have not already.
+
+**Read-only, deliberately.** `✓` switches to the worktree you already have for that PR's branch;
+`○` opens the PR. Checking a PR out into a worktree is *not* built here — the GitHub Pull Requests
+extension already ships "Checkout Pull Request in Worktree", and re-implementing a free, maintained
+feature to save one hand-off is not worth it. Follow their checkout with `$(sync)` to bootstrap.
+
+The reason this context exists at all, given that extension also lists PRs, is the **join**: it
+renders PRs in its own sidebar, unaware of worktrees, so it cannot tell you that `#404` is the
+worktree you already have open, or switch you to it.
+
+⚠️ **No extension has shipped in-session QuickPick tabs**, so there is no reference implementation
+and no worn path through the edge cases. If the keybindings turn out not to fire, the strip's mouse
+toggles still work and each context remains its own command, which is what every comparable
+extension does anyway.
+
+📌 **On `tab`.** Tab in a quick input also moves DOM focus between the filter box and the list, so
+binding it is a genuine trade — but it *is* dispatched through the normal keybinding layer (VS Code
+binds Tab itself for snippets and suggestions, and quick-open ships its own Tab-family cycling at
+weight 250 with a `when` clause). Extension bindings register at weight 400, so ours wins where its
+`when` matches, and a matched binding suppresses the default focus move.
+
+⚠️ **A context key that gates an arrow-key binding must never be left set.** `pickerOpen` is
+cleared in `onDidHide`, in a `finally`, and in `deactivate` — three sites, because the picker sets
+no `ignoreFocusOut` and therefore hides on every ordinary focus loss, and because VS Code exposes no
+read-back or reset API for context keys. Left set, it would steal the key workbench-wide with no way
+for a user to discover which extension did it.
+
+## Linear
+
+Most worktrees here are already named after a Linear issue, because the branch name is copied from
+Linear's own `branchName` rather than rebuilt from a slug. The link therefore already exists in the
+data and needs no storage — it is simply never surfaced in the editor.
+
+| Setting | Effect |
+|---|---|
+| `worktreeManager.linear.workspace` | Your workspace slug. **Required** — nothing in an identifier yields it, and team keys are unique only within a workspace. Empty disables every Linear feature. |
+| `worktreeManager.linear.openIn` | `browser` (default) or `app` for `linear://` deep links. |
+| `worktreeManager.linear.teamKeys` | e.g. `["A"]`. Optional but recommended — see below. |
+
+A branch with no identifier degrades **in silence**, never with an error: the primary worktree
+normally has none, so that is the common case rather than an exception.
+
+### Signing in
+
+Two ways, and which one you get depends on whether `worktreeManager.linear.clientId` is set.
+
+**OAuth (preferred).** Create an app at `linear.app/settings/api/applications/new`, register the
+redirect URI as **exactly** `http://127.0.0.1:47823/callback`, and put its client id in the setting.
+`Aistos: Sign in to Linear` then opens your browser, and signing out actually **revokes** the
+authorisation at Linear rather than just forgetting it locally.
+
+There is no client *secret* to configure. PKCE makes one unnecessary, and a `.vsix` is a zip anyone
+can open, so the extension could not safely hold one anyway.
+
+**Personal API key.** Leave the client id empty and sign-in *asks which you want* — a key now, or
+help setting up OAuth (it opens the app-registration page and the setting, and tells you the exact
+redirect URI to paste). This is not a degraded mode: OAuth needs an app registered in the workspace,
+which is a step you may reasonably not want to take.
+
+Either way the credential lives in `context.secrets`, never in `globalState`, which is plaintext in
+`state.vscdb`.
+
+📌 **Why a loopback callback rather than `vscode://`.** Linear's own OAuth docs use
+`http://localhost:3000/oauth/callback` as their redirect example, so the ordinary native-app flow
+(RFC 8252) applies: the extension listens on a fixed loopback port for the length of the sign-in and
+closes it immediately afterwards. The alternative — a `vscode://` callback bounced through
+`https://vscode.dev/redirect` — is documented only for MCP server auth and has been reported
+refusing non-Microsoft targets, so it is a dependency worth not having.
+
+⚠️ **Remote-SSH is the case to test.** The extension runs on the remote host, so the callback server
+does too. `asExternalUri` establishes VS Code's port forwarding, but if the forwarded local port is
+not 47823 the redirect will not match what Linear has registered. The API key path works
+unconditionally and is the fallback if that bites.
+
+⚠️ **Scopes follow the setting, not the install.** Sign-in requests `read` only, unless you have
+enabled `setStartedOnCreate`, in which case it requests `write` too. A grant already made cannot be
+narrowed by turning the setting off later, so enabling it re-asks rather than being requested up
+front.
+
+⚠️ **`SecretStorage` does not sync across machines.** On a second machine Linear is simply
+unconfigured until you sign in there too. That is by design, and it will otherwise read as a bug.
+
+`Aistos: Sign out of Linear` deletes the key **and** every cache it filled, in one act. A
+credential revoked while the ticket bodies it fetched stay on disk is the failure that matters here:
+issue text in this workspace carries personal data.
+
+### Moving an issue to started
+
+`worktreeManager.linear.setStartedOnCreate` (default **off**) moves an issue to its team's first
+started status when you create a worktree for it — after the `postCreate` hook exits 0, and before
+the open prompt. A worktree whose bootstrap failed is not one you have started work in.
+
+⚠️ **Only from `triage`, `backlog` or `unstarted`.** This workspace runs *two* started states,
+In Progress and In Review, so an unguarded transition would drag an issue back from In Review every
+time you create a worktree to address review comments — and would reopen a Done one.
+
+⚠️ **Check whether Linear already does this for you before turning it on.** Linear has a
+*Settings → Code & reviews* toggle that moves an issue to started when its branch name is copied
+from the UI, and its GitHub integration has a "move to In Progress when a PR opens" default. If
+either is active for your workspace, this setting duplicates a transition you already get — and the
+rationale for a write-capable credential goes with it. That is one settings check, and it is worth
+doing first.
+
+It defaults to off for the same reason: a write-capable credential is not something a default
+install should acquire on your behalf, and a grant already made cannot be narrowed by turning the
+setting off afterwards.
+
+📌 Everything reads its credential through one function, so the two mechanisms above cost the rest
+of the extension nothing.
+
+⚠️ **Set `teamKeys` if you want the badge to be trustworthy.** The identifier pattern matches any
+1–5 letters followed by a number, so a branch like `wip-2-something` or `fix-2-broken` produces a
+confident-looking `WIP-2` badge linking to an issue that does not exist. Listing the keys your
+workspace actually issues is what rejects those. Without it the match stays permissive.
+
+## Requirements
+
+**VS Code 1.109 or newer.** The `.vsix` refuses to install below it rather than installing and
+throwing later, which is the honest failure — but it does mean a teammate on an older build is
+excluded outright, not merely stale.
+
+`@types/vscode` is pinned to the **exact** engine version, with no caret. A caret had silently
+resolved 1.104 → 1.125, so post-floor APIs typechecked cleanly and would have thrown at runtime on
+the version the manifest claimed to support. The pin makes the compiler enforce the floor; the
+committed `bun.lock` and CI's `--frozen-lockfile` keep a local install from drifting away from it.
+
+### The issue sidebar
+
+It has its **own icon in the activity bar**, below Extensions.
+
+⚠️ **The icon only appears once `worktreeManager.linear.workspace` is set** — the view's `when`
+clause is that setting, and a container with no visible views is hidden, so with it empty there is
+nothing to find. `Aistos: Show Linear Issue Panel` is the way in: it focuses the panel, or tells you
+what to configure if that is why it is missing.
+
+A `WebviewView` in the Source Control container, showing the ticket for the worktree you are **in** —
+which is what distinguishes it from `→`, which shows whichever row you are pointing at. Description
+and comments both, because a ticket's decisions accumulate in its comments and rendering only the
+description shows the stalest part of it.
+
+Markdown is rendered by **VS Code's own renderer**, through the `markdown.api.render` command the
+built-in markdown extension exposes. So ticket bodies look exactly like a markdown preview, including
+any markdown-it plugins you have installed — and the extension bundles no markdown parser, which
+keeps it dependency-free.
+
+⚠️ That command is not in the extension-authoring guide, so it is treated as semi-public: if it ever
+disappears, the panel falls back to escaped plain text rather than breaking.
+
+Images load **directly from Linear**, using signed URLs: the GraphQL request sets
+`public-file-urls-expire-in`, and every file URL in the response comes back with a signature that
+works without an `Authorization` header. Nothing is cached on disk — no image cache, no
+`localResourceRoots`, no retention policy, and no ticket data at rest to leak. The panel refetches
+on focus, which remints the signatures.
+
+⚠️ **The CSP is the sanitiser, and it has to be.** Markdown permits raw HTML and a ticket body is
+text written by anyone with workspace access. `default-src 'none'` with `script-src 'none'` means an
+injected `<script>` or `onerror=` cannot execute even though it survives rendering, and `img-src` is
+narrowed to Linear's own storage rather than opened to `https:`, so a body cannot beacon out by
+embedding a remote image.
+
+### Previewing a row
+
+**→** on any picker row opens the same popup, from any context — a row means the same thing wherever
+you reached it from: a unit of work that may have a worktree, a Linear issue and a pull request.
+Showing a different subset per tab would make the gesture's result depend on where you came from.
+
 It is a **modal**: the ticket as text you read, the actions as buttons you press.
 
 ```
@@ -472,7 +710,8 @@ code change cannot settle.
 | `tab` / `shift+tab` | Cycle to the next / previous context | the picker is open |
 | `alt+1` / `alt+2` / `alt+3` | Jump straight to Worktrees / Linear / Pull requests | the picker is open |
 | `→` | Preview the highlighted row | the **picker** is open, cursor at end of the filter |
-| `escape` | Dismiss the preview and return to the list | the preview is open |
+| `escape` | Close the preview, back to the list | the preview panel has focus |
+| `o` `c` `l` `p` | Preview actions — open / create worktree, Linear, PR | the preview panel has focus |
 
 ⚠️ `→` and `alt+1/2/3` fire only while a picker of this extension holds focus, and the `→` clause
 additionally reuses two of VS Code's **internal** context keys (`inputFocus`,

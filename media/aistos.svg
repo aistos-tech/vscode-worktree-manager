@@ -1,9 +1,19 @@
 <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <!-- Activity bar icons are recoloured by the theme, so this is a single-colour silhouette in
-       currentColor with no fills of its own. Stroke-based rather than a filled glyph: at 24px a
-       filled letterform loses its counter, while two strokes and a bar stay legible. -->
-  <g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M4.5 20 12 4l7.5 16"/>
-    <path d="M7.7 13.6h8.6"/>
+  <!-- "Aï", traced from the org mark. Activity bar icons are recoloured by the theme, so this is a
+       single-colour silhouette in currentColor with no fills of its own.
+
+       The A is a filled letterform rather than two strokes: the mark is heavy, and a stroked A
+       reads as a chevron beside a solid ï. Its counter and the splay between the legs are cut with
+       fill-rule="evenodd" rather than drawn as separate shapes, so the letter stays one path and
+       cannot come apart when scaled. The geometry is derived rather than eyeballed — the leg edges
+       are parallel lines offset by the stem width, so the counter's apex lands where the two inner
+       edges meet instead of at a guessed point. -->
+  <g fill="currentColor" fill-rule="evenodd">
+    <path d="M1.8 20 L6.4 4 H8.2 L12.8 20 Z
+             M6.04 15 H8.56 L7.3 10.6 Z
+             M5.35 17.4 H9.25 L10 20 H4.6 Z"/>
+    <path d="M17 9.4 H20 V20 H17 Z"/>
+    <circle cx="16.6" cy="5.8" r="1.5"/>
+    <circle cx="20.4" cy="5.8" r="1.5"/>
   </g>
 </svg>

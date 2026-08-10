@@ -1,11 +1,12 @@
 import * as vscode from "vscode";
+import { setting } from "../settings";
 import { refreshTokens, revokeToken, runOAuthFlow } from "./oauth";
 import { redirectUri } from "./pkce";
 
 const TOKEN_KEY = "linear.token";
 const TOKENS_KEY = "linear.tokens";
-const CLIENT_ID_KEY = "worktreeManager.linear.clientId";
-const WRITE_KEY = "worktreeManager.linear.setStartedOnCreate";
+const CLIENT_ID_KEY = "aistos.linear.clientId";
+const WRITE_KEY = "aistos.linear.setStartedOnCreate";
 
 /* THE SEAM. Every consumer calls `linearToken` and nothing else, so the credential mechanism can
    change without touching a caller. Two mechanisms live behind it:
@@ -28,15 +29,13 @@ type StoredTokens = {
   expiresAt?: number;
 };
 
-export const linearClientId = () =>
-  vscode.workspace.getConfiguration().get<string>(CLIENT_ID_KEY, "").trim();
+export const linearClientId = () => setting(CLIENT_ID_KEY, "").trim();
 
 /* `read` unless the user has actually enabled the one feature that writes. Requesting `write` at
    first sign-in would take full read-write over everything the user can reach in the workspace
    before they have expressed any opinion — and a grant already made cannot be narrowed by turning
    the setting off afterwards. */
-export const requiredScopes = () =>
-  vscode.workspace.getConfiguration().get<boolean>(WRITE_KEY, false) ? ["read", "write"] : ["read"];
+export const requiredScopes = () => (setting(WRITE_KEY, false) ? ["read", "write"] : ["read"]);
 
 const readTokens = async (context: vscode.ExtensionContext) => {
   const raw = await context.secrets.get(TOKENS_KEY);
@@ -124,7 +123,7 @@ const chooseMechanism = async () => {
       },
       {
         label: "$(shield) Set up OAuth instead",
-        detail: `Opens ${SETUP_URL}. Register the redirect URI as ${redirectUri()}, then put the client id in worktreeManager.linear.clientId. Signing out then revokes at Linear.`,
+        detail: `Opens ${SETUP_URL}. Register the redirect URI as ${redirectUri()}, then put the client id in aistos.linear.clientId. Signing out then revokes at Linear.`,
         choice: "oauth" as const,
       },
     ],
@@ -147,10 +146,7 @@ export const signIn = async (context: vscode.ExtensionContext) => {
        receives it. Nothing to store yet, so this returns without a credential — deliberately, as
        the next sign-in is the one that succeeds. */
     await vscode.env.openExternal(vscode.Uri.parse(SETUP_URL));
-    await vscode.commands.executeCommand(
-      "workbench.action.openSettings",
-      "worktreeManager.linear.clientId",
-    );
+    await vscode.commands.executeCommand("workbench.action.openSettings", "aistos.linear.clientId");
     vscode.window.showInformationMessage(
       `Register the redirect URI as exactly ${redirectUri()}, paste the client id into the setting, then run "Aistos: Sign in to Linear" again.`,
     );

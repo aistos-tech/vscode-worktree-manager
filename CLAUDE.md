@@ -1,9 +1,10 @@
 # vscode-worktree-manager
 
 A private VS Code extension shown in the editor as **Aistos** — the repo, the package `name` and the
-extension id all keep `vscode-worktree-manager`, and so do the `worktreeManager.*` settings and
-command ids. Only display surfaces carry the brand; `README.md` → *Naming* says why, and the reason
-is load-bearing rather than cosmetic. It switches between git worktrees. `src/` splits along the seams the
+extension id all keep `vscode-worktree-manager`, and so do the `worktreeManager.*` command ids. The
+**settings** are `aistos.*`, with the old keys still read as a deprecated alias — every read goes
+through `src/settings.ts`, never `getConfiguration().get` directly. `README.md` → *Naming* says why
+each of those is what it is, and the reasons are load-bearing rather than cosmetic. It switches between git worktrees. `src/` splits along the seams the
 plan named: `worktree.ts` (porcelain parsing, identity, the git calls), `state.ts` (`globalState` —
 colours, pins, recency), `manage.ts` (rename and delete), `extension.ts` (activation, status bar,
 switcher). `private: true`, never published — installed by hand through

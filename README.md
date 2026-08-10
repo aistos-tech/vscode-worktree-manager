@@ -4,9 +4,9 @@ Worktrees, Linear issues and pull requests in one switcher, with per-repo bootst
 
 Shown in VS Code as **Aistos**; every command is under the `Aistos:` category in the palette.
 
-📌 **The extension *identifier* is still `aistos-tech.vscode-worktree-manager`, and the settings are
-still `worktreeManager.*`.** Only the display name changed, and deliberately — see
-[Naming](#naming).
+📌 **The settings are `aistos.*`. The old `worktreeManager.*` keys are still read**, so an
+unmigrated `.vscode/settings.json` keeps working. The extension *identifier* and the command ids
+are still `worktreeManager`-based, and deliberately — see [Naming](#naming).
 
 ## What it does
 
@@ -68,16 +68,16 @@ env files, ports, containers, install/build. A repo binds two commands in its **
 
 ```json
 {
-  "worktreeManager.hooks.postCreate": "bun run worktree-hook post-create --apply",
-  "worktreeManager.hooks.preDelete": "bun run worktree-hook pre-delete --apply"
+  "aistos.hooks.postCreate": "bun run worktree-hook post-create --apply",
+  "aistos.hooks.preDelete": "bun run worktree-hook pre-delete --apply"
 }
 ```
 
 | Setting | Effect |
 |---|---|
-| `worktreeManager.hooks.postCreate` | Runs after a worktree is created. Empty disables it. |
-| `worktreeManager.hooks.preDelete` | Runs **before** deletion. **Non-zero aborts the delete.** Empty disables it. |
-| `worktreeManager.worktreesRoot` | Where new worktrees go. Empty → `<parent of primary>/worktrees`. |
+| `aistos.hooks.postCreate` | Runs after a worktree is created. Empty disables it. |
+| `aistos.hooks.preDelete` | Runs **before** deletion. **Non-zero aborts the delete.** Empty disables it. |
+| `aistos.worktreesRoot` | Where new worktrees go. Empty → `<parent of primary>/worktrees`. |
 
 All three are **`window`** scope. `machine` scope cannot be set from `.vscode/settings.json`, which
 is the entire point of binding per repo.
@@ -244,16 +244,16 @@ data and needs no storage — it is simply never surfaced in the editor.
 
 | Setting | Effect |
 |---|---|
-| `worktreeManager.linear.workspace` | Your workspace slug. **Required** — nothing in an identifier yields it, and team keys are unique only within a workspace. Empty disables every Linear feature. |
-| `worktreeManager.linear.openIn` | `browser` (default) or `app` for `linear://` deep links. |
-| `worktreeManager.linear.teamKeys` | e.g. `["A"]`. Optional but recommended — see below. |
+| `aistos.linear.workspace` | Your workspace slug. **Required** — nothing in an identifier yields it, and team keys are unique only within a workspace. Empty disables every Linear feature. |
+| `aistos.linear.openIn` | `browser` (default) or `app` for `linear://` deep links. |
+| `aistos.linear.teamKeys` | e.g. `["A"]`. Optional but recommended — see below. |
 
 A branch with no identifier degrades **in silence**, never with an error: the primary worktree
 normally has none, so that is the common case rather than an exception.
 
 ### Signing in
 
-Two ways, and which one you get depends on whether `worktreeManager.linear.clientId` is set.
+Two ways, and which one you get depends on whether `aistos.linear.clientId` is set.
 
 **OAuth (preferred).** Create an app at `linear.app/settings/api/applications/new`, register the
 redirect URI as **exactly** `http://127.0.0.1:47823/callback`, and put its client id in the setting.
@@ -297,7 +297,7 @@ issue text in this workspace carries personal data.
 
 ### Moving an issue to started
 
-`worktreeManager.linear.setStartedOnCreate` (default **off**) moves an issue to its team's first
+`aistos.linear.setStartedOnCreate` (default **off**) moves an issue to its team's first
 started status when you create a worktree for it — after the `postCreate` hook exits 0, and before
 the open prompt. A worktree whose bootstrap failed is not one you have started work in.
 
@@ -339,7 +339,7 @@ committed `bun.lock` and CI's `--frozen-lockfile` keep a local install from drif
 
 It has its **own icon in the activity bar**, below Extensions.
 
-⚠️ **The icon only appears once `worktreeManager.linear.workspace` is set** — the view's `when`
+⚠️ **The icon only appears once `aistos.linear.workspace` is set** — the view's `when`
 clause is that setting, and a container with no visible views is hidden, so with it empty there is
 nothing to find. `Aistos: Show Linear Issue Panel` is the way in: it focuses the panel, or tells you
 what to configure if that is why it is missing.
@@ -461,17 +461,30 @@ after a VS Code upgrade.
 
 ## Naming
 
-The extension displays as **Aistos** and its commands sit under the `Aistos:` category. Three things
-did **not** change, each for a reason worth stating:
+The extension displays as **Aistos**, its commands sit under the `Aistos:` category, and its
+settings live under the `aistos` root key. Two things did **not** change, each for a reason worth
+stating:
 
 | Unchanged | Why |
 |---|---|
 | `name` (and so the extension id `aistos-tech.vscode-worktree-manager`) | VS Code keys `globalState` and `SecretStorage` by extension id. Changing it discards your Linear session, every hook trust approval, the pin colours and both caches — and leaves the old extension installed alongside the new one, contributing a duplicate of every command and keybinding. |
-| `worktreeManager.*` setting keys | They are the repo↔editor contract. `debt-collection/.vscode/settings.json` binds `worktreeManager.hooks.preDelete`, and VS Code **silently ignores** settings it does not recognise — so a rename would stop the pre-delete hook firing for every teammate with no error, and each delete would go back to orphaning a stack. That is precisely the failure this extension exists to prevent. |
 | `worktreeManager.*` command ids | Anything a teammate has bound in `keybindings.json` keeps working. |
 
-Renaming any of them is possible, but it is a migration rather than an edit — ask if you want it and
-it should come with a settings-key alias that reads the old names for a release.
+The **setting keys** did change, from `worktreeManager.*` to `aistos.*`. They are the repo↔editor
+contract — `debt-collection/.vscode/settings.json` binds the pre-delete hook, and VS Code silently
+ignores settings it does not recognise, so a bare rename would stop that hook firing for every
+teammate with no error, and each delete would go back to orphaning a stack. It therefore ships as a
+migration rather than an edit:
+
+- Every read tries `aistos.<key>` first, then `worktreeManager.<key>` — in `getConfiguration` **and**
+  in the primary worktree's tracked `.vscode/settings.json`, which is branch-versioned and so lags
+  behind on any branch older than the rename.
+- The manifest still declares the old keys, marked deprecated, so the editor explains the move
+  rather than greying them out as unknown.
+- The fallback goes away in a later release, not in this one.
+
+Renaming the id or the command ids is possible too, but each is a migration of the same shape — ask
+if you want one.
 
 ## Deliberately not included
 

@@ -34,25 +34,25 @@
     "configuration": {
       "title": "Aistos",
       "properties": {
-        "worktreeManager.hooks.postCreate": {
+        "aistos.hooks.postCreate": {
           "type": "string",
           "default": "",
           "scope": "window",
           "markdownDescription": "Shell command run after a worktree is created, from the primary worktree. Receives `WORKTREE_PATH`, `WORKTREE_BRANCH`, `WORKTREE_SOURCE` and `WORKTREE_PURPOSE` in its environment. Empty disables it. Set this in the repo's `.vscode/settings.json` so it travels with the repo."
         },
-        "worktreeManager.hooks.preDelete": {
+        "aistos.hooks.preDelete": {
           "type": "string",
           "default": "",
           "scope": "window",
           "markdownDescription": "Shell command run **before** a worktree is deleted, from the primary worktree. A non-zero exit aborts the deletion, so a failed teardown cannot leave the worktree removed and its stack running. Empty disables it."
         },
-        "worktreeManager.linear.workspace": {
+        "aistos.linear.workspace": {
           "type": "string",
           "default": "",
           "scope": "window",
-          "markdownDescription": "Your Linear workspace slug \u2014 the `<workspace>` in `https://linear.app/<workspace>/issue/A-1661`. Required to build issue links, and not derivable: nothing in an issue identifier yields it, and team keys are unique only within a workspace. Empty disables every Linear feature."
+          "markdownDescription": "Your Linear workspace slug — the `<workspace>` in `https://linear.app/<workspace>/issue/A-1661`. Required to build issue links, and not derivable: nothing in an issue identifier yields it, and team keys are unique only within a workspace. Empty disables every Linear feature."
         },
-        "worktreeManager.linear.openIn": {
+        "aistos.linear.openIn": {
           "type": "string",
           "enum": [
             "browser",
@@ -62,32 +62,87 @@
           "scope": "window",
           "markdownDescription": "Open Linear issues in the browser (`https://`) or the desktop app (`linear://`)."
         },
-        "worktreeManager.linear.clientId": {
+        "aistos.linear.clientId": {
           "type": "string",
           "default": "",
           "scope": "window",
-          "markdownDescription": "OAuth application client id from `linear.app/settings/api/applications/new`. Set it and sign-in uses OAuth with PKCE; leave it empty and sign-in asks for a personal API key instead.\n\nRegister the redirect URI as exactly `http://127.0.0.1:47823/callback`. A client id is public by design \u2014 there is no secret to configure, because PKCE makes one unnecessary and a `.vsix` could not keep one anyway."
+          "markdownDescription": "OAuth application client id from `linear.app/settings/api/applications/new`. Set it and sign-in uses OAuth with PKCE; leave it empty and sign-in asks for a personal API key instead.\n\nRegister the redirect URI as exactly `http://127.0.0.1:47823/callback`. A client id is public by design — there is no secret to configure, because PKCE makes one unnecessary and a `.vsix` could not keep one anyway."
         },
-        "worktreeManager.linear.setStartedOnCreate": {
+        "aistos.linear.setStartedOnCreate": {
           "type": "boolean",
           "default": false,
           "scope": "window",
-          "markdownDescription": "Move a Linear issue to its team's first started status when a worktree is created for it \u2014 only when the issue is currently in triage, backlog or unstarted, so an issue already In Review is never dragged backwards. Defaults to **off**: it needs a write-capable credential, and that should be a choice you make rather than one a default install makes for you."
+          "markdownDescription": "Move a Linear issue to its team's first started status when a worktree is created for it — only when the issue is currently in triage, backlog or unstarted, so an issue already In Review is never dragged backwards. Defaults to **off**: it needs a write-capable credential, and that should be a choice you make rather than one a default install makes for you."
         },
-        "worktreeManager.linear.teamKeys": {
+        "aistos.linear.teamKeys": {
           "type": "array",
           "items": {
             "type": "string"
           },
           "default": [],
           "scope": "window",
-          "markdownDescription": "Team keys this workspace issues, e.g. `[\"A\"]`. When set, a branch whose prefix is not one of them yields no badge \u2014 which is what stops `wip-2-something` rendering a confident link to a non-existent `WIP-2`. Empty accepts any identifier-shaped prefix."
+          "markdownDescription": "Team keys this workspace issues, e.g. `[\"A\"]`. When set, a branch whose prefix is not one of them yields no badge — which is what stops `wip-2-something` rendering a confident link to a non-existent `WIP-2`. Empty accepts any identifier-shaped prefix."
+        },
+        "aistos.worktreesRoot": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "markdownDescription": "Where new worktrees are created. Empty resolves to `<parent of the primary worktree>/worktrees`."
+        },
+        "worktreeManager.hooks.postCreate": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "markdownDeprecationMessage": "Renamed to `aistos.hooks.postCreate`, which is read first. This key is still read so an unmigrated `.vscode/settings.json` keeps working; it will stop being read in a later release."
+        },
+        "worktreeManager.hooks.preDelete": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "markdownDeprecationMessage": "Renamed to `aistos.hooks.preDelete`, which is read first. This key is still read so an unmigrated `.vscode/settings.json` keeps working; it will stop being read in a later release."
+        },
+        "worktreeManager.linear.workspace": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "markdownDeprecationMessage": "Renamed to `aistos.linear.workspace`, which is read first. This key is still read so an unmigrated `.vscode/settings.json` keeps working; it will stop being read in a later release."
+        },
+        "worktreeManager.linear.openIn": {
+          "type": "string",
+          "default": "browser",
+          "scope": "window",
+          "enum": [
+            "browser",
+            "app"
+          ],
+          "markdownDeprecationMessage": "Renamed to `aistos.linear.openIn`, which is read first. This key is still read so an unmigrated `.vscode/settings.json` keeps working; it will stop being read in a later release."
+        },
+        "worktreeManager.linear.clientId": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "markdownDeprecationMessage": "Renamed to `aistos.linear.clientId`, which is read first. This key is still read so an unmigrated `.vscode/settings.json` keeps working; it will stop being read in a later release."
+        },
+        "worktreeManager.linear.setStartedOnCreate": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "markdownDeprecationMessage": "Renamed to `aistos.linear.setStartedOnCreate`, which is read first. This key is still read so an unmigrated `.vscode/settings.json` keeps working; it will stop being read in a later release."
+        },
+        "worktreeManager.linear.teamKeys": {
+          "type": "array",
+          "default": [],
+          "scope": "window",
+          "items": {
+            "type": "string"
+          },
+          "markdownDeprecationMessage": "Renamed to `aistos.linear.teamKeys`, which is read first. This key is still read so an unmigrated `.vscode/settings.json` keeps working; it will stop being read in a later release."
         },
         "worktreeManager.worktreesRoot": {
           "type": "string",
           "default": "",
           "scope": "window",
-          "markdownDescription": "Where new worktrees are created. Empty resolves to `<parent of the primary worktree>/worktrees`."
+          "markdownDeprecationMessage": "Renamed to `aistos.worktreesRoot`, which is read first. This key is still read so an unmigrated `.vscode/settings.json` keeps working; it will stop being read in a later release."
         }
       }
     },
@@ -116,7 +171,7 @@
     "commands": [
       {
         "command": "worktreeManager.switch",
-        "title": "Switch Worktree\u2026",
+        "title": "Switch Worktree…",
         "category": "Aistos"
       },
       {
@@ -136,7 +191,7 @@
       },
       {
         "command": "worktreeManager.create",
-        "title": "Create Worktree\u2026",
+        "title": "Create Worktree…",
         "category": "Aistos"
       },
       {
@@ -187,17 +242,17 @@
       },
       {
         "command": "worktreeManager.linear.bindIssue",
-        "title": "Bind Linear Issue\u2026",
+        "title": "Bind Linear Issue…",
         "category": "Aistos"
       },
       {
         "command": "worktreeManager.bootstrap",
-        "title": "Bootstrap Worktree\u2026",
+        "title": "Bootstrap Worktree…",
         "category": "Aistos"
       },
       {
         "command": "worktreeManager.hooks.forget",
-        "title": "Forget Hook Approval\u2026",
+        "title": "Forget Hook Approval…",
         "category": "Aistos"
       },
       {
@@ -207,12 +262,12 @@
       },
       {
         "command": "worktreeManager.rename",
-        "title": "Rename Worktree\u2026",
+        "title": "Rename Worktree…",
         "category": "Aistos"
       },
       {
         "command": "worktreeManager.delete",
-        "title": "Delete Worktree\u2026",
+        "title": "Delete Worktree…",
         "category": "Aistos"
       }
     ],

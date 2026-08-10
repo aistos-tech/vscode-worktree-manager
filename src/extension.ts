@@ -40,6 +40,7 @@ import {
   PR_GROUP_LABEL,
   type PrGroup,
 } from "./picker/order";
+import { settingChanged } from "./settings";
 import {
   ensureColours,
   type OpenedMap,
@@ -990,7 +991,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
   await publishLinearEnabled();
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration("worktreeManager.linear.workspace")) {
+      if (settingChanged(event, "aistos.linear.workspace")) {
         void publishLinearEnabled();
       }
     }),
@@ -1020,13 +1021,13 @@ export const activate = async (context: vscode.ExtensionContext) => {
     vscode.commands.registerCommand(SHOW_ISSUE_COMMAND, async () => {
       if (!linearWorkspace()) {
         const answer = await vscode.window.showWarningMessage(
-          "Set worktreeManager.linear.workspace to your Linear workspace slug — the panel cannot appear without it.",
+          "Set aistos.linear.workspace to your Linear workspace slug — the panel cannot appear without it.",
           "Open settings",
         );
         if (answer) {
           await vscode.commands.executeCommand(
             "workbench.action.openSettings",
-            "worktreeManager.linear.workspace",
+            "aistos.linear.workspace",
           );
         }
         return;

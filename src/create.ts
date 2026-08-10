@@ -6,6 +6,7 @@ import { describeExit, runHook } from "./hooks";
 import { linearToken } from "./linear/auth";
 import { LinearError, moveToStarted } from "./linear/client";
 import { issueIdFor } from "./linear/id";
+import { setting } from "./settings";
 import { ensureApproved } from "./trust";
 import {
   addWorktree,
@@ -106,7 +107,7 @@ const recoverFromAddFailure = async ({
   return false;
 };
 
-const SET_STARTED_KEY = "worktreeManager.linear.setStartedOnCreate";
+const SET_STARTED_KEY = "aistos.linear.setStartedOnCreate";
 
 /* Runs only after the hook exits 0, and BEFORE the open prompt — a worktree whose bootstrap failed
    is not one you have started work in, and saying otherwise on the ticket is worse than saying
@@ -119,7 +120,7 @@ const markStarted = async ({
   context: vscode.ExtensionContext;
   branch: string;
 }) => {
-  if (!vscode.workspace.getConfiguration().get<boolean>(SET_STARTED_KEY, false)) {
+  if (!setting(SET_STARTED_KEY, false)) {
     return;
   }
   const identifier = issueIdFor({ branch });

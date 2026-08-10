@@ -1,23 +1,21 @@
 import * as vscode from "vscode";
+import { setting } from "../settings";
 import { issueIdFor, issueUrl } from "./id";
 
-const WORKSPACE_KEY = "worktreeManager.linear.workspace";
-const OPEN_IN_KEY = "worktreeManager.linear.openIn";
-const TEAM_KEYS_KEY = "worktreeManager.linear.teamKeys";
+const WORKSPACE_KEY = "aistos.linear.workspace";
+const OPEN_IN_KEY = "aistos.linear.openIn";
+const TEAM_KEYS_KEY = "aistos.linear.teamKeys";
 const BIND_KEY = "worktreeManager.linear.bindings";
 export const LINEAR_ENABLED_CONTEXT = "worktreeManager.linearEnabled";
 
 type Bindings = Record<string, string>;
 
-export const linearWorkspace = () =>
-  vscode.workspace.getConfiguration().get<string>(WORKSPACE_KEY, "").trim();
+export const linearWorkspace = () => setting(WORKSPACE_KEY, "").trim();
 
 const openIn = () =>
-  vscode.workspace.getConfiguration().get<string>(OPEN_IN_KEY, "browser") === "app"
-    ? ("app" as const)
-    : ("browser" as const);
+  setting<string>(OPEN_IN_KEY, "browser") === "app" ? ("app" as const) : ("browser" as const);
 
-const teamKeys = () => vscode.workspace.getConfiguration().get<string[]>(TEAM_KEYS_KEY, []);
+const teamKeys = () => setting<string[]>(TEAM_KEYS_KEY, []);
 
 /* A real context key, set at activation and on every change to the workspace setting. It is what
    makes "costs nothing to a user who never configures Linear" true rather than merely asserted:

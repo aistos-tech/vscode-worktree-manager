@@ -1,15 +1,16 @@
 import { dirname, join } from "node:path";
 import * as vscode from "vscode";
 import { readTrackedSettings } from "./jsonc";
+import { explicitSetting, legacyKey, setting } from "./settings";
 
 export const HOOK_KEYS = {
-  postCreate: "worktreeManager.hooks.postCreate",
-  preDelete: "worktreeManager.hooks.preDelete",
+  postCreate: "aistos.hooks.postCreate",
+  preDelete: "aistos.hooks.preDelete",
 } as const;
 
 export type HookName = keyof typeof HOOK_KEYS;
 
-const ROOT_KEY = "worktreeManager.worktreesRoot";
+const ROOT_KEY = "aistos.worktreesRoot";
 
 type ResolveHookProps = {
   hook: HookName;
@@ -37,15 +38,14 @@ export type ResolvedHook = {
    and `get()` cannot tell that from unset — so the fallback would override a deliberate opt-out. */
 export const resolveHook = ({ hook, primaryPath }: ResolveHookProps): ResolvedHook => {
   const key = HOOK_KEYS[hook];
-  const inspected = vscode.workspace.getConfiguration().inspect<string>(key);
-  const explicit =
-    inspected?.workspaceFolderValue ?? inspected?.workspaceValue ?? inspected?.globalValue;
+  const explicit = explicitSetting<string>(key) ?? explicitSetting<string>(legacyKey(key));
   if (typeof explicit === "string") {
     const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     return { command: explicit.trim(), source: folder ?? primaryPath };
   }
 
-  const tracked = readTrackedSettings(primaryPath)?.[key];
+  const settings = readTrackedSettings(primaryPath);
+  const tracked = settings?.[key] ?? settings?.[legacyKey(key)];
   return {
     command: typeof tracked === "string" ? tracked.trim() : "",
     source: primaryPath,
@@ -56,6 +56,6 @@ export const resolveHook = ({ hook, primaryPath }: ResolveHookProps): ResolvedHo
    hardcodes. Configurable rather than assumed, because this ships to teammates whose layout is
    their own. */
 export const resolveWorktreesRoot = (primaryPath: string) => {
-  const configured = vscode.workspace.getConfiguration().get<string>(ROOT_KEY, "").trim();
+  const configured = setting(ROOT_KEY, "").trim();
   return configured || join(dirname(primaryPath), "worktrees");
 };

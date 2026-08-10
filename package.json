@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Aistos",
   "description": "Worktrees, Linear issues and pull requests in one switcher, with per-repo bootstrap hooks",
-  "version": "0.30.1",
+  "version": "0.30.2",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -292,7 +292,7 @@
     "test": "bun test",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "package": "bun run build && bun x @vscode/vsce package --no-dependencies --skip-license --allow-missing-repository"
+    "package": "bun run build && bun x @vscode/vsce package --no-dependencies --skip-license"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.0",
@@ -300,5 +300,9 @@
     "@types/node": "^22.15.0",
     "@types/vscode": "1.109.0",
     "typescript": "^5.9.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aistos-tech/vscode-worktree-manager.git"
   }
 }

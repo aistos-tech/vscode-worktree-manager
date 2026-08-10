@@ -1,0 +1,25 @@
+# What ships is the bundle, the manifest, the README and the icon. Nothing else.
+#
+# Without this file vsce packages the whole working tree: the last build was 634 KB, of which
+# 1.3 MB uncompressed was `.claude/` — the planning documents, which describe internal architecture
+# and reference customer data, and which have no business being handed to anyone who installs the
+# extension. `src/` went too, which is 180 KB of source that `dist/extension.js` already contains.
+
+.claude/**
+.github/**
+.vscode/**
+src/**
+node_modules/**
+
+# Build inputs and repo furniture, none of which the extension host reads.
+tsconfig.json
+biome.json
+bun.lock
+bun.lockb
+CLAUDE.md
+.gitignore
+.editorconfig
+*.vsix
+
+# The bundle is what runs; its map would only leak paths.
+dist/**/*.map

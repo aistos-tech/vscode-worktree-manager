@@ -79,7 +79,14 @@ env files, ports, containers, install/build. A repo binds two commands in its **
 |---|---|
 | `aistos.hooks.postCreate` | Runs after a worktree is created. Empty disables it. |
 | `aistos.hooks.preDelete` | Runs **before** deletion. **Non-zero aborts the delete.** Empty disables it. |
-| `aistos.worktreesRoot` | Where new worktrees go. Empty → `<parent of primary>/worktrees`. |
+| `aistos.worktreesRoot` | Where new worktrees go. Empty → `<parent of primary>/worktrees`. `~` is expanded. |
+
+⚠️ **`~` is expanded here and in the destination prompt, and it did not used to be.** `~` is a
+*shell* convention — Node expands nothing, and `path.resolve("~/workspace/worktrees")` returns
+`<cwd>/~/workspace/worktrees`. The extension host's cwd is `/`, so the entirely reasonable setting
+`"~/workspace/worktrees"` reached `mkdirSync` as `/~/workspace/worktrees` and died with `ENOENT`.
+Fixed in `0.34.0`; before that the failure was also silent, which is a separate story under
+[Logs](#logs).
 
 All three are **`window`** scope. `machine` scope cannot be set from `.vscode/settings.json`, which
 is the entire point of binding per repo.

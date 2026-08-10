@@ -1,11 +1,12 @@
 import { existsSync, mkdirSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import * as vscode from "vscode";
 import { resolveHook, resolveWorktreesRoot } from "./config";
 import { describeExit, runHook } from "./hooks";
 import { linearToken } from "./linear/auth";
 import { LinearError, moveToStarted } from "./linear/client";
 import { issueIdFor } from "./linear/id";
+import { toAbsolutePath } from "./paths";
 import { setting } from "./settings";
 import { ensureApproved } from "./trust";
 import {
@@ -58,7 +59,9 @@ const askDest = (defaultPath: string) =>
     validateInput: (value) => {
       const trimmed = value.trim();
       if (!trimmed) return "Destination is required.";
-      const path = isAbsolute(trimmed) ? trimmed : resolve(trimmed);
+      /* Same expansion as the accept path. Without it the box validated `/~/…`, found nothing
+         there, and cheerfully reported the destination as free. */
+      const path = toAbsolutePath(trimmed);
       return existsSync(path) ? `"${path}" already exists.` : undefined;
     },
   });
@@ -164,7 +167,9 @@ export const createWorktree = async ({ context, gitCwd, worktrees, branchSeed }:
   const root = resolveWorktreesRoot(gitCwd);
   const raw = await askDest(join(root, basename(branch)));
   if (!raw) return;
-  const dest = isAbsolute(raw.trim()) ? raw.trim() : resolve(raw.trim());
+  /* Expanded here too, not only in resolveWorktreesRoot: the destination is an input box the user
+     can retype, and a tilde typed there hit exactly the same ENOENT. */
+  const dest = toAbsolutePath(raw);
 
   /* The CLI this ports runs this unconditionally, ahead of its own existing/new branch. Without it
      a first worktree under a not-yet-created root fails with ENOENT rather than being created. */

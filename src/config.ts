@@ -1,6 +1,7 @@
 import { dirname, join } from "node:path";
 import * as vscode from "vscode";
 import { readTrackedSettings } from "./jsonc";
+import { expandHome } from "./paths";
 import { explicitSetting, legacyKey, setting } from "./settings";
 
 export const HOOK_KEYS = {
@@ -55,7 +56,11 @@ export const resolveHook = ({ hook, primaryPath }: ResolveHookProps): ResolvedHo
 /* Empty resolves to `<parent of primary>/worktrees`, which matches what the debt-collection CLI
    hardcodes. Configurable rather than assumed, because this ships to teammates whose layout is
    their own. */
+/* ⚠️ `expandHome`, not the raw value. `~` is a shell convention and Node expands nothing, so
+   `worktreesRoot: "~/workspace/worktrees"` — the value anyone would write — reached `mkdirSync` as
+   `/~/workspace/worktrees` and failed with ENOENT. The setting is `window`-scoped and therefore
+   hand-written, which makes a tilde the expected input rather than an edge case. */
 export const resolveWorktreesRoot = (primaryPath: string) => {
-  const configured = setting(ROOT_KEY, "").trim();
+  const configured = expandHome(setting(ROOT_KEY, ""));
   return configured || join(dirname(primaryPath), "worktrees");
 };

@@ -707,6 +707,10 @@ const withCurrentWorktree = async ({ root, announce }: CurrentWorktreeProps) => 
   };
 };
 
+/* The worktree this window is open on, once git has said so. Held here because the sidebar's
+   provider is registered before it is known — see the comment at that registration. */
+let currentWorktree: Worktree | undefined;
+
 export const activate = async (context: vscode.ExtensionContext) => {
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
@@ -843,16 +847,13 @@ export const activate = async (context: vscode.ExtensionContext) => {
     }),
   );
 
-  if (!root) return;
+  /* ABOVE the early returns below, and deliberately.
 
-  const resolved = await withCurrentWorktree({ root, announce: false });
-  if (!resolved) return;
-
-  /* Registered once, at activation: signing out must clear what the credential fetched, in the
-     same act. A revoked key with the rows it filled still in state.vscdb is the failure the
-     retention rule exists to prevent. */
-  onSignOut(() => clearCache(context));
-
+     The context key gates the view's `when` clause, so a key that is never set means the panel does
+     not merely fail to render — it does not EXIST, and neither does the command that would reveal
+     it. Both used to sit after `if (!root) return` and `if (!resolved) return`, so a window whose
+     folder did not resolve as a worktree silently had no panel and a palette entry that did
+     nothing, with no way to tell which was which. Nothing here needs a resolved worktree. */
   await publishLinearEnabled();
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
@@ -862,31 +863,26 @@ export const activate = async (context: vscode.ExtensionContext) => {
     }),
   );
 
-  await rememberOpened({ context, id: resolved.current.id });
-  const colours = await ensureColours({ context, worktrees: resolved.worktrees });
-  const item = vscode.window.createStatusBarItem(
-    "worktreeManager.current",
-    vscode.StatusBarAlignment.Left,
-    100,
-  );
-  item.name = "Worktree";
-  /* The sidebar tracks the CURRENT worktree, which is what distinguishes it from the → popup:
-     the popup shows whichever row you are pointing at, this shows where you are. */
+  /* The identifier is resolved LAZILY rather than captured, so registering the provider does not
+     have to wait on git: a provider registered after two awaited git calls loses the race when
+     Source Control is already open, and the panel shows "no data provider registered" until a
+     reload. */
   const issueView = createIssueView({
     context,
     resolveIdentifier: () =>
+      currentWorktree &&
       identifierFor({
         context,
-        worktreeId: resolved.current.id,
-        branch: resolved.current.branch,
+        worktreeId: currentWorktree.id,
+        branch: currentWorktree.branch,
       }),
   });
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(ISSUE_VIEW_ID, issueView),
     vscode.commands.registerCommand(REFRESH_ISSUE_COMMAND, () => issueView.refresh()),
-    /* The view is collapsed-by-default inside Source Control, which makes it easy to miss entirely.
-       An explicit command is the discoverable way in, and it focuses the container first because
-       revealing a view inside a hidden container does nothing visible. */
+    /* The panel is easy to miss inside Source Control, so an explicit command is the discoverable
+       way in — and when the workspace setting is what is missing it says so, because that is the
+       one reason the panel cannot appear at all. */
     vscode.commands.registerCommand(SHOW_ISSUE_COMMAND, async () => {
       if (!linearWorkspace()) {
         const answer = await vscode.window.showWarningMessage(
@@ -912,6 +908,25 @@ export const activate = async (context: vscode.ExtensionContext) => {
     }),
   );
   onSignOut(() => issueView.forget());
+  /* Signing out must clear what the credential fetched, in the same act — a revoked key with the
+     rows it filled still in state.vscdb is the failure the retention rule exists to prevent. */
+  onSignOut(() => clearCache(context));
+
+  if (!root) return;
+
+  const resolved = await withCurrentWorktree({ root, announce: false });
+  if (!resolved) return;
+  currentWorktree = resolved.current;
+  void issueView.refresh();
+
+  await rememberOpened({ context, id: resolved.current.id });
+  const colours = await ensureColours({ context, worktrees: resolved.worktrees });
+  const item = vscode.window.createStatusBarItem(
+    "worktreeManager.current",
+    vscode.StatusBarAlignment.Left,
+    100,
+  );
+  item.name = "Worktree";
 
   const render = () =>
     renderStatus({

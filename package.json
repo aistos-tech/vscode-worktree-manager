@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Aistos",
   "description": "Worktrees, Linear issues and pull requests in one switcher, with per-repo bootstrap hooks",
-  "version": "0.35.0",
+  "version": "0.36.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -45,6 +45,17 @@
           "default": "",
           "scope": "window",
           "markdownDescription": "Shell command run **before** a worktree is deleted, from the primary worktree. A non-zero exit aborts the deletion, so a failed teardown cannot leave the worktree removed and its stack running. Empty disables it."
+        },
+        "aistos.hooks.purpose": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "work",
+            "review"
+          ],
+          "default": "auto",
+          "scope": "window",
+          "markdownDescription": "What the post-create hook is told a new worktree is for, in `WORKTREE_PURPOSE`. The **repo** decides what each value skips — debt-collection drops the containers, the Postgres wait and the database seeding for `review`.\n\n`auto` (default) picks per tab: a row in the **pull requests** tab creates for `review`, every other row creates for `work`. A PR is a branch you are about to read and delete; anything else is work.\n\n`work` and `review` pin it regardless of tab."
         },
         "aistos.linear.workspace": {
           "type": "string",
@@ -100,6 +111,17 @@
           "default": "",
           "scope": "window",
           "markdownDeprecationMessage": "Renamed to `aistos.hooks.preDelete`, which is read first. This key is still read so an unmigrated `.vscode/settings.json` keeps working; it will stop being read in a later release."
+        },
+        "worktreeManager.hooks.purpose": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "work",
+            "review"
+          ],
+          "default": "auto",
+          "scope": "window",
+          "markdownDeprecationMessage": "Renamed to `aistos.hooks.purpose`, which is read first. This key is still read so an unmigrated `.vscode/settings.json` keeps working; it will stop being read in a later release."
         },
         "worktreeManager.linear.workspace": {
           "type": "string",

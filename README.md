@@ -230,6 +230,16 @@ was not worth it. That traded the common action for the rare one. Reaching the P
 keystroke either way — **RightArrow** previews it and the preview's `Open PR` action still opens
 the URL.
 
+**A PR row creates for `review`, not `work`** — the one place the two tabs genuinely differ, and
+the reason is the bootstrap rather than the picker. The hook receives
+`WORKTREE_PURPOSE=review`, and the repo decides what that skips: debt-collection drops the
+containers, the Postgres wait and the database seeding, which is the slow half. A PR is a branch
+you are about to read and delete, so spending minutes on a stack you will not start is a poor
+trade. A Linear row stays `work` — an issue you are picking up is work by definition.
+
+`aistos.hooks.purpose` overrides it: `auto` (default) is the per-tab rule above, `work` and
+`review` pin it regardless of tab.
+
 The reason this context exists at all, given that extension also lists PRs, is the **join**: it
 renders PRs in its own sidebar, unaware of worktrees, so it cannot tell you that `#404` is the
 worktree you already have open, or switch you to it.

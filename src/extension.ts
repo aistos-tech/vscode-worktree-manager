@@ -684,9 +684,18 @@ const showSwitcher = async ({
         });
         return;
       }
+      /* "review", not "work" — the one place the two tabs differ. A PR row is a branch you are
+         about to read and delete, so the repo is told it may skip the slow half of its bootstrap.
+         The Linear row below stays "work": an issue you are picking up is work by definition. */
       report(
         "Create worktree",
-        createWorktree({ context, gitCwd: mainPath, worktrees, branchSeed: branch }),
+        createWorktree({
+          context,
+          gitCwd: mainPath,
+          worktrees,
+          branchSeed: branch,
+          purpose: "review",
+        }),
       );
       return;
     }

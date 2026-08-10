@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import * as vscode from "vscode";
 import { resolveHook, resolveWorktreesRoot } from "./config";
-import { describeExit, runHook } from "./hooks";
+import { describeExit, type HookEnv, runHook } from "./hooks";
 import { linearToken } from "./linear/auth";
 import { LinearError, moveToStarted } from "./linear/client";
 import { issueIdFor } from "./linear/id";
@@ -29,6 +29,23 @@ type CreateProps = {
   gitCwd: string;
   worktrees: Worktree[];
   branchSeed?: string;
+  /* What the caller believes this worktree is for. The PR tab passes "review"; every other caller
+     leaves it unset and gets "work". The setting below can override both. */
+  purpose?: HookEnv["WORKTREE_PURPOSE"];
+};
+
+const PURPOSE_KEY = "aistos.hooks.purpose";
+
+/* The REPO decides what "review" skips — in debt-collection it drops the containers, the Postgres
+   wait and the database seeding, which is the slow half of a bootstrap. The extension only decides
+   which word to send.
+
+   The default rule is per-tab: a row in the PR list is a branch you are about to read and delete,
+   a row anywhere else is work. That is what "auto" means. "work" and "review" pin it, for anyone
+   whose habits do not match — reviewing on their own branches, or wanting containers every time. */
+const resolvePurpose = (requested: HookEnv["WORKTREE_PURPOSE"]) => {
+  const configured = setting<string>(PURPOSE_KEY, "auto");
+  return configured === "work" || configured === "review" ? configured : requested;
 };
 
 const askBranch = (seed: string | undefined) =>
@@ -144,7 +161,13 @@ const markStarted = async ({
   }
 };
 
-export const createWorktree = async ({ context, gitCwd, worktrees, branchSeed }: CreateProps) => {
+export const createWorktree = async ({
+  context,
+  gitCwd,
+  worktrees,
+  branchSeed,
+  purpose = "work",
+}: CreateProps) => {
   const branch = (await askBranch(branchSeed))?.trim();
   if (!branch) return;
 
@@ -210,7 +233,7 @@ export const createWorktree = async ({ context, gitCwd, worktrees, branchSeed }:
         WORKTREE_PATH: dest,
         WORKTREE_BRANCH: branch,
         WORKTREE_SOURCE: source ?? "",
-        WORKTREE_PURPOSE: "work",
+        WORKTREE_PURPOSE: resolvePurpose(purpose),
       },
       name: `postCreate ${basename(dest)}`,
     });

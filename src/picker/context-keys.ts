@@ -13,7 +13,10 @@ import * as vscode from "vscode";
    So: ONE owner. Nothing else in the codebase calls setContext for these two keys. */
 
 export const PICKER_OPEN = "worktreeManager.pickerOpen";
-export const PREVIEW_OPEN = "worktreeManager.previewOpen";
+
+/* There is no second key any more. The → preview is a MODAL, which VS Code owns and dismisses
+   itself, so there is no surface of ours to gate a binding on and nothing that could be left set.
+   The one key that remains is the one guarding an arrow key. */
 
 const set = (key: string, value: boolean) =>
   vscode.commands.executeCommand("setContext", key, value);
@@ -22,12 +25,7 @@ const set = (key: string, value: boolean) =>
    onDidHide — so a key set BEFORE show() is immediately cleared by the handler that follows it.
    Set the incoming key after show(); clear the outgoing one before hide(). */
 export const enterPicker = () => set(PICKER_OPEN, true);
-export const enterPreview = () => set(PREVIEW_OPEN, true);
 
 export const exitPicker = () => set(PICKER_OPEN, false);
-export const exitPreview = () => set(PREVIEW_OPEN, false);
 
-export const exitAll = async () => {
-  await exitPreview();
-  await exitPicker();
-};
+export const exitAll = () => exitPicker();

@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Aistos",
   "description": "Worktrees, Linear issues and pull requests in one switcher, with per-repo bootstrap hooks",
-  "version": "0.27.1",
+  "version": "0.28.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -92,7 +92,7 @@
       }
     },
     "views": {
-      "scm": [
+      "aistos": [
         {
           "type": "webview",
           "id": "worktreeManager.issue",
@@ -157,11 +157,6 @@
       {
         "command": "worktreeManager.linear.previewIssue",
         "title": "Preview Row",
-        "category": "Aistos"
-      },
-      {
-        "command": "worktreeManager.linear.previewBack",
-        "title": "Close Preview",
         "category": "Aistos"
       },
       {
@@ -252,11 +247,6 @@
         "when": "worktreeManager.pickerOpen"
       },
       {
-        "command": "worktreeManager.linear.previewBack",
-        "key": "left",
-        "when": "worktreeManager.previewOpen"
-      },
-      {
         "command": "worktreeManager.linear.previewIssue",
         "key": "right",
         "when": "worktreeManager.pickerOpen && (!inputFocus || cursorAtEndOfQuickInputBox)"
@@ -276,16 +266,21 @@
           "when": "false"
         },
         {
-          "command": "worktreeManager.linear.previewBack",
-          "when": "false"
-        },
-        {
           "command": "worktreeManager.nextContext",
           "when": "false"
         },
         {
           "command": "worktreeManager.previousContext",
           "when": "false"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "aistos",
+          "title": "Aistos",
+          "icon": "media/aistos.svg"
         }
       ]
     }

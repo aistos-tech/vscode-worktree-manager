@@ -17,7 +17,8 @@ import {
 } from "./linear/badge";
 import { fetchMyIssues, LinearError } from "./linear/client";
 import { issueIdFor } from "./linear/id";
-import { closePreview, showIssuePreview } from "./linear/preview";
+import { showPreviewModal } from "./linear/preview";
+import { escapeIcons } from "./linear/text";
 import { createIssueView, ISSUE_VIEW_ID } from "./linear/view";
 import { deleteWorktree, renameWorktree } from "./manage";
 import {
@@ -61,7 +62,6 @@ const SHOW_PRS_COMMAND = "worktreeManager.showPRs";
 const SIGN_IN_COMMAND = "worktreeManager.linear.signIn";
 const SIGN_OUT_COMMAND = "worktreeManager.linear.signOut";
 const PREVIEW_ISSUE_COMMAND = "worktreeManager.linear.previewIssue";
-const PREVIEW_BACK_COMMAND = "worktreeManager.linear.previewBack";
 const REFRESH_ISSUE_COMMAND = "worktreeManager.linear.refreshIssue";
 const SHOW_ISSUE_COMMAND = "worktreeManager.linear.showIssue";
 const NEXT_CONTEXT_COMMAND = "worktreeManager.nextContext";
@@ -202,7 +202,9 @@ const isIssueItem = (item: vscode.QuickPickItem): item is IssueItem => "issueBra
    `✓` means a worktree already exists for this branch and selecting it switches, `○` means it does
    not and selecting it creates one. */
 const issueItem = (row: CachedRow & { local: boolean }): IssueItem => ({
-  label: `${row.local ? "$(check)" : "$(circle-outline)"} ${row.identifier} ${row.title}`,
+  /* Escaped, because `$(name)` renders as a theme icon in a label — a ticket titled
+     `run $(bun test)` would otherwise be swallowed or drawn as a broken glyph. */
+  label: `${row.local ? "$(check)" : "$(circle-outline)"} ${escapeIcons(row.identifier)} ${escapeIcons(row.title)}`,
   description: row.state,
   /* A local row keeps a detail line rather than dropping to nothing — otherwise the rows you can
      act on most cheaply are the sparsest ones on screen. */
@@ -420,7 +422,7 @@ const showSwitcher = async ({
                 })),
               ),
               (row) => ({
-                label: `${row.local ? "$(check)" : "$(circle-outline)"} #${row.number} ${row.title}`,
+                label: `${row.local ? "$(check)" : "$(circle-outline)"} #${row.number} ${escapeIcons(row.title)}`,
                 description: describePr(row),
                 detail: row.branch,
                 prBranch: row.branch,
@@ -713,11 +715,10 @@ const showSwitcher = async ({
   const preview = async () => {
     const [row] = picker.activeItems;
     if (!row) return;
-    /* Not the create row, and not a separator or a status line: → on those does nothing. */
+    /* Not the create row, and not a status line: → on those does nothing. */
     if (isCreateItem(row) || isNoteItem(row)) return;
 
-    /* Every context resolves to the same shape, which is what makes → mean one thing everywhere:
-       a unit of work that may have a branch, an issue and a PR. */
+    /* Every context resolves to the same shape, which is what makes → mean one thing everywhere. */
     const branch = isWorktreeItem(row)
       ? row.worktree.branch
       : isIssueItem(row)
@@ -732,10 +733,13 @@ const showSwitcher = async ({
       ? identifierFor({ context, worktreeId: worktree.id, branch })
       : issueIdFor({ branch });
 
+    /* The modal takes focus, so the picker hides on the way in. Flagged, because the picker's own
+       onDidHide would otherwise dispose the instance we are about to bring back. */
     const restore = picker.activeItems;
     handingOverToPreview = true;
     await exitPicker();
-    await showIssuePreview({
+
+    const action = await showPreviewModal({
       context,
       target: {
         identifier,
@@ -744,50 +748,47 @@ const showSwitcher = async ({
         worktreeName: worktree ? basename(worktree.path) : undefined,
         gitCwd: mainPath,
       },
-      onBack: () => {
-        handingOverToPreview = true;
-        picker.show();
-        picker.activeItems = restore;
-        handingOverToPreview = false;
-        void enterPicker();
-      },
-      onAction: (action) => {
-        /* The picker is not reshown for an action: every one of these either replaces the window or
-           opens something outside it, so returning to a list nobody is looking at is noise. */
-        if (action.kind === "openWorktree") {
-          picker.dispose();
-          vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(action.path), {
-            forceReuseWindow: true,
-          });
-          return;
-        }
-        if (action.kind === "createWorktree") {
-          picker.dispose();
-          void createWorktree({
-            context,
-            gitCwd: mainPath,
-            worktrees,
-            branchSeed: action.branch,
-          });
-          return;
-        }
-        if (action.kind === "openLinear") {
-          void openIssue(action.identifier);
-        } else if (action.kind === "openPr") {
-          void vscode.env.openExternal(vscode.Uri.parse(action.url));
-        } else if (action.kind === "signIn") {
-          void signIn(context);
-        } else if (action.kind === "bind" && worktree) {
-          void bindIssue({ context, worktreeId: worktree.id });
-        }
-        /* Back to the list for the actions that left the window where it was. */
-        handingOverToPreview = true;
-        picker.show();
-        picker.activeItems = restore;
-        handingOverToPreview = false;
-        void enterPicker();
-      },
     });
+
+    /* Re-assigning `items` is what actually repaints the list, and it is not optional.
+       `QuickPick.show()` sends only `{ visible: true }` over the ext-host protocol — it never
+       re-sends items — and the quick-input widget is a SINGLETON whose item list was replaced when
+       the modal's dialog took over. Restoring only `activeItems`, as this used to, brought the
+       picker back completely empty. */
+    const comeBack = () => {
+      handingOverToPreview = true;
+      picker.show();
+      refresh();
+      picker.activeItems = picker.items.filter((item) => restore.includes(item));
+      handingOverToPreview = false;
+      void enterPicker();
+    };
+
+    if (!action) {
+      comeBack();
+      handingOverToPreview = false;
+      return;
+    }
+
+    if (action.kind === "openWorktree") {
+      picker.dispose();
+      vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(action.path), {
+        forceReuseWindow: true,
+      });
+      return;
+    }
+    if (action.kind === "createWorktree") {
+      picker.dispose();
+      void createWorktree({ context, gitCwd: mainPath, worktrees, branchSeed: action.branch });
+      return;
+    }
+    if (action.kind === "openLinear") void openIssue(action.identifier);
+    else if (action.kind === "openPr") {
+      void vscode.env.openExternal(vscode.Uri.parse(action.url));
+    } else if (action.kind === "signIn") void signIn(context);
+
+    /* Everything above leaves the window where it was, so the list comes back. */
+    comeBack();
     handingOverToPreview = false;
   };
 
@@ -895,7 +896,6 @@ export const activate = async (context: vscode.ExtensionContext) => {
       }
     }),
     vscode.commands.registerCommand(PREVIEW_ISSUE_COMMAND, () => activePreviewTrigger?.()),
-    vscode.commands.registerCommand(PREVIEW_BACK_COMMAND, () => closePreview()),
     vscode.commands.registerCommand(NEXT_CONTEXT_COMMAND, () => activeContextCycler?.(1)),
     vscode.commands.registerCommand(PREVIOUS_CONTEXT_COMMAND, () => activeContextCycler?.(-1)),
     vscode.commands.registerCommand(SIGN_IN_COMMAND, async () => {
@@ -1019,8 +1019,12 @@ export const activate = async (context: vscode.ExtensionContext) => {
         }
         return;
       }
-      await vscode.commands.executeCommand("workbench.view.scm");
-      issueView.reveal();
+      /* The per-view focus command, NOT issueView.reveal(). VS Code auto-registers
+         `<viewId>.focus` for every contributed view, and it works whether or not the provider has
+         resolved — whereas `reveal()` calls `WebviewView.show()` on a handle that only exists once
+         the view has already been shown, so the command meant to reveal a never-yet-seen panel was
+         a no-op in exactly the case it was written for. */
+      await vscode.commands.executeCommand("worktreeManager.issue.focus");
       await issueView.refresh();
     }),
     /* Refetch on focus, so a ticket updated in the browser is not stale in the panel — and so the

@@ -337,11 +337,12 @@ committed `bun.lock` and CI's `--frozen-lockfile` keep a local install from drif
 
 ### The issue sidebar
 
-⚠️ **It only exists once `worktreeManager.linear.workspace` is set** — the view's `when` clause is
-that setting, so with it empty there is no panel to find. `Aistos: Show Linear Issue Panel` is the
-way in: it reveals the panel, or tells you what to configure if that is why it is missing.
+It has its **own icon in the activity bar**, below Extensions.
 
-It lives in the **Source Control** container, so open that view rather than looking in the Explorer.
+⚠️ **The icon only appears once `worktreeManager.linear.workspace` is set** — the view's `when`
+clause is that setting, and a container with no visible views is hidden, so with it empty there is
+nothing to find. `Aistos: Show Linear Issue Panel` is the way in: it focuses the panel, or tells you
+what to configure if that is why it is missing.
 
 A `WebviewView` in the Source Control container, showing the ticket for the worktree you are **in** —
 which is what distinguishes it from `→`, which shows whichever row you are pointing at. Description
@@ -374,27 +375,38 @@ embedding a remote image.
 you reached it from: a unit of work that may have a worktree, a Linear issue and a pull request.
 Showing a different subset per tab would make the gesture's result depend on where you came from.
 
-**Actions first, then context.** The action is why you pressed → — to decide whether to go there —
-so it is the first row and Enter hits it:
+It is a **modal**: the ticket as text you read, the actions as buttons you press.
 
 ```
-$(folder-opened) Open worktree acme-42-import
-──────────────────────────────────────────────
-ACME-42   Import mapping for onboarding
-$(circle-filled) In Progress · Thibault
-$(git-pull-request) #421 Fix the reconciliation  open · approved
-──────────────────────────────────────────────
-$(link-external) Open in Linear
-$(github) Open PR #421
+╔══════════════════════════════════════════════╗
+║ ACME-42  Import mapping                     ║
+║                                              ║
+║ thblt-thlgn/acme-42-import                 ║
+║ In Progress  ·  Thibault  ·  PR #421 open    ║
+║                                              ║
+║ Le fichier d'import arrive avec les colonnes║
+║ déjà partiellement normalisées. Le mapping…  ║
+║   ☐ mapping des colonnes du CSV              ║
+║   ☑ règle de rapprochement                   ║
+║   [image: dashboard]                         ║
+║                                              ║
+║ [Open worktree] [Open in Linear] [Open PR]   ║
+╚══════════════════════════════════════════════╝
 ```
 
-When no worktree exists yet the first row becomes **Create worktree for ‹branch›**; when there is no
-branch at all it becomes **Bind a Linear issue…**. There is always exactly one primary action.
+An earlier version was a second QuickPick, and it was wrong in a way worth recording: a list whose
+entire affordance is "press Enter on me" held three rows that did nothing, and the description —
+the part you actually want — could not be shown at all, because `detail` does not wrap and would
+truncate a sentence mid-clause.
 
-**← closes the preview**, alongside Escape and the platform Back binding. **→ inside the preview does
-nothing** — it is bound to `pickerOpen` only, so it cannot re-enter a preview from a preview.
+⚠️ **A modal's body is plain text.** No markdown, no images, no links. Ticket bodies are flattened
+first: images become `[image: alt]` rather than vanishing, links keep their text, checklists become
+`☐`/`☑`, fences lose their backticks and keep their code. Anything past ~1400 characters is cut at a
+paragraph or sentence boundary — never mid-word — and says `… continued in Linear`. The **sidebar**
+is where the fully rendered ticket lives, with real markdown and images.
 
-It shows **scalar fields only** — identifier, title, state, assignee, PR number and state.
+Buttons are capped at three so the row does not wrap. The primary action comes first: **Open
+worktree** when one exists, **Create worktree** when it does not.
 
 ⚠️ **That is a deliberate limit, not an unfinished one.** `QuickPickItem` carries no markdown and
 its `detail` line does not wrap: a long line truncates with an ellipsis. Rendering a ticket *body*
@@ -444,7 +456,7 @@ code change cannot settle.
 | `tab` / `shift+tab` | Cycle to the next / previous context | the picker is open |
 | `alt+1` / `alt+2` / `alt+3` | Jump straight to Worktrees / Linear / Pull requests | the picker is open |
 | `→` | Preview the highlighted row | the **picker** is open, cursor at end of the filter |
-| `←` / `escape` / `ctrl+-` | Back, from the preview | the preview is open |
+| `escape` | Dismiss the preview and return to the list | the preview is open |
 
 ⚠️ `→` and `alt+1/2/3` fire only while a picker of this extension holds focus, and the `→` clause
 additionally reuses two of VS Code's **internal** context keys (`inputFocus`,

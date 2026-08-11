@@ -34,9 +34,15 @@ are still `worktreeManager`-based, and deliberately — see [Naming](#naming).
   the window at the primary worktree. Pin and colour entries are released.
 - **Create** — `Aistos: Create Worktree…`, or the `$(add)` row in the switcher. Prompts for a branch, a
   source to fork from (skipped when the branch already exists), and a destination, then runs the
-  repo's `postCreate` hook and offers **Open** / **Open in New Window** / **Stay**. The create row's
-  label embeds whatever you typed, so it stays visible while the list filters — a static row is
-  hidden exactly when you want it.
+  repo's `postCreate` hook and **opens the worktree**. The create row's label embeds whatever you
+  typed, so it stays visible while the list filters — a static row is hidden exactly when you want
+  it. `aistos.create.open` controls the ending: `sameWindow` (default), `newWindow`, `ask` — the
+  behaviour before `0.38.0` — or `stay`.
+
+  ⚠️ `sameWindow` reloads the window, which tears down the extension host, the hook's terminal and
+  the Aistos log. Everything the bootstrap printed goes with it. That is why it runs only after a
+  **successful** bootstrap — every failure path returns before the open — and why `newWindow` is
+  the setting to pick if you want to read the output afterwards.
 - **Bootstrap** — `Aistos: Bootstrap Worktree…`, or the `$(sync)` button on a switcher row. Re-runs the
   repo's `postCreate` hook against a worktree that already exists: the recovery path for a failed
   create, a failed delete, and worktrees made by agent tooling outside the editor. Offered only when

@@ -281,17 +281,43 @@ export const createWorktree = async ({
 
   await markStarted({ context, branch });
 
-  /* Three-way, not a forced reopen. `forceReuseWindow` tears down the extension host AND the task
-     terminal, so it would destroy the hook output the user may still want to read. */
-  const opened = await vscode.window.showInformationMessage(
+  await openCreated(dest);
+};
+
+const OPEN_KEY = "aistos.create.open";
+
+/* What to do with the worktree once it exists. Defaulted to `sameWindow`: creating a worktree is
+   how you switch to one, and a prompt at the end of a flow whose answer is almost always "yes" is
+   a keystroke charged for nothing.
+
+   ⚠️ `sameWindow` DISCARDS this window. `forceReuseWindow` reloads it, which tears down the
+   extension host, the hook's terminal and the Aistos log channel — so everything the bootstrap
+   printed goes with it. That is fine when it succeeded and is why this runs only on the success
+   path: every failure above returns before reaching here. `newWindow` is the setting for anyone who
+   wants to keep reading the output. */
+const openCreated = async (dest: string) => {
+  const mode = setting<string>(OPEN_KEY, "sameWindow");
+  const open = (reuse: boolean) =>
+    vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(dest), {
+      forceReuseWindow: reuse,
+    });
+
+  if (mode === "stay") {
+    vscode.window.showInformationMessage(`Worktree ready at ${dest}`);
+    return;
+  }
+  if (mode === "sameWindow") return void open(true);
+  if (mode === "newWindow") return void open(false);
+
+  /* `ask` — the behaviour before 0.38.0, kept because a shared machine or an unfamiliar repo is a
+     reasonable place to want the choice each time. */
+  const answer = await vscode.window.showInformationMessage(
     `Worktree ready at ${dest}`,
     "Open",
     "Open in New Window",
     "Stay",
   );
-  if (opened === "Open" || opened === "Open in New Window") {
-    vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(dest), {
-      forceReuseWindow: opened === "Open",
-    });
+  if (answer === "Open" || answer === "Open in New Window") {
+    void open(answer === "Open");
   }
 };

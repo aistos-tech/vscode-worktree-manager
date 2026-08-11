@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Aistos",
   "description": "Worktrees, Linear issues and pull requests in one switcher, with per-repo bootstrap hooks",
-  "version": "0.37.0",
+  "version": "0.38.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -100,6 +100,18 @@
           "scope": "window",
           "markdownDescription": "Where new worktrees are created. Empty resolves to `<parent of the primary worktree>/worktrees`. `~` is expanded."
         },
+        "aistos.create.open": {
+          "type": "string",
+          "enum": [
+            "sameWindow",
+            "newWindow",
+            "ask",
+            "stay"
+          ],
+          "default": "sameWindow",
+          "scope": "window",
+          "markdownDescription": "What happens to a worktree once it has been created and bootstrapped.\n\n`sameWindow` (default) opens it in this window. ⚠️ That reloads the window, which tears down the extension host, the hook terminal and the Aistos log — everything the bootstrap printed goes with it. It only ever runs after a successful bootstrap; any failure stops before this point.\n\n`newWindow` opens it beside this one, keeping the output readable. `ask` prompts, which was the behaviour before `0.38.0`. `stay` just reports the path."
+        },
         "worktreeManager.hooks.postCreate": {
           "type": "string",
           "default": "",
@@ -165,6 +177,18 @@
           "default": "",
           "scope": "window",
           "markdownDeprecationMessage": "Renamed to `aistos.worktreesRoot`, which is read first. This key is still read so an unmigrated `.vscode/settings.json` keeps working; it will stop being read in a later release."
+        },
+        "worktreeManager.create.open": {
+          "type": "string",
+          "enum": [
+            "sameWindow",
+            "newWindow",
+            "ask",
+            "stay"
+          ],
+          "default": "sameWindow",
+          "scope": "window",
+          "markdownDeprecationMessage": "Renamed to `aistos.create.open`, which is read first. This key is still read so an unmigrated `.vscode/settings.json` keeps working; it will stop being read in a later release."
         }
       }
     },

@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Aistos",
   "description": "Worktrees, Linear issues and pull requests in one switcher, with per-repo bootstrap hooks",
-  "version": "0.38.0",
+  "version": "0.39.0",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",

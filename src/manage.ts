@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { type ResolvedHook, resolveHook } from "./config";
 import { describeExit, runHook } from "./hooks";
 import { acquireWorktreeLock } from "./lock";
+import { tail, withStep } from "./progress";
 import { forgetWorktree } from "./state";
 import { ensureApproved } from "./trust";
 import {
@@ -241,17 +242,23 @@ const runDelete = async ({
       return;
     }
 
-    const exitCode = await runHook({
-      command: hook.command,
-      cwd: mainPath,
-      env: {
-        WORKTREE_PATH: worktree.path,
-        WORKTREE_BRANCH: worktree.branch,
-        WORKTREE_SOURCE: "",
-        WORKTREE_PURPOSE: "work",
-      },
-      name: `preDelete ${name}`,
-    });
+    /* The delete path needs this MORE than create does: the pre-delete hook tears down
+       containers and volumes, it blocks the deletion until it finishes, and a modal has already
+       been confirmed — so a silent minute here reads as a delete that did nothing. */
+    const exitCode = await withStep(`Tearing down ${name}…`, (progress) =>
+      runHook({
+        command: hook.command,
+        cwd: mainPath,
+        env: {
+          WORKTREE_PATH: worktree.path,
+          WORKTREE_BRANCH: worktree.branch,
+          WORKTREE_SOURCE: "",
+          WORKTREE_PURPOSE: "work",
+        },
+        name: `preDelete ${name}`,
+        onLine: (line) => progress.report({ message: tail(line) }),
+      }),
+    );
     if (exitCode !== 0) {
       vscode.window.showErrorMessage(
         `Pre-delete hook failed (${describeExit(exitCode)}) — "${name}" was NOT deleted. Check the "aistos" task panel, then retry or tear the stack down by hand.`,

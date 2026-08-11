@@ -120,8 +120,13 @@ to retry against. The hook runs as a programmatic `vscode.Task`, which yields a 
 no dependency on shell integration. **A task that never reports an exit code is treated as a
 failure** — the opposite would make a broken hook look like a successful teardown.
 
-⚠️ Hooks run in VS Code's **automation profile**, not your interactive shell. `bun: command not
-found` (exit 127) is the classic symptom.
+Hooks run in **`$SHELL -lc`** — a login shell, so your profile is sourced and anything `mise`,
+`asdf` or `nvm` puts on the PATH is there.
+
+⚠️ **This changed in `0.39.0`.** Before that they ran through a `ShellExecution` in VS Code's
+**automation profile**, which sources no profile, and `bun: command not found` (exit 127) was the
+classic symptom. The extension now spawns the process itself, so it picks the shell — see
+[Live hook output](#live-hook-output) for why it spawns at all.
 
 ### Trust
 
@@ -604,6 +609,32 @@ the editor path fails:
 | Stack orphaned by a bare `git worktree remove` | the repo's orphan-reclaim command |
 | Hook prompts you unexpectedly | `Aistos: List Hook Approvals` to see what is stored |
 | **Nothing happens at all** | `Aistos: Show Logs` — see below |
+
+### Live hook output
+
+A create, a bootstrap and a delete each show a **progress notification whose message is the last
+line the hook printed**. The same lines go to the log channel, so the transcript outlives the
+notification and the terminal.
+
+⚠️ **Getting that required changing who runs the hook.** It used to run as a `ShellExecution`,
+which VS Code executes in a terminal *it* owns — and an extension cannot read the output of a
+terminal it did not create. The Pseudoterminal API is explicit about that. So the output existed
+only on screen, in a panel opened with `focus: false`, and the log could record the exit code and
+nothing else. A create looked frozen for minutes.
+
+It is now a `CustomExecution` returning a **`Pseudoterminal` the extension implements**, which
+spawns the process itself. It is still a real `vscode.Task` — same panel, same task list, same
+re-run — but the stream belongs to the extension, so it reaches the terminal, the log and the
+notification at once.
+
+Two things that fell out of owning the process:
+
+- The shell is now `$SHELL -lc`, which fixes the `exit 127` class described under
+  [Per-repo hooks](#per-repo-hooks).
+- The environment **could** now be filtered. `ShellExecutionOptions.env` could only merge, never
+  subtract, which is why the note below says the trust approval is the only mitigation. That is
+  still true today — the hook still inherits everything — but it is now a decision rather than a
+  constraint.
 
 ### Logs
 

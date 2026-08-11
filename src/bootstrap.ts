@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { resolveHook } from "./config";
 import { describeExit, type HookEnv, runHook } from "./hooks";
 import { acquireWorktreeLock } from "./lock";
+import { tail, withStep } from "./progress";
 import { ensureApproved } from "./trust";
 import type { Worktree } from "./worktree";
 
@@ -100,17 +101,28 @@ export const bootstrapWorktree = async ({ context, worktree, primaryPath }: Boot
     return;
   }
 
-  const exitCode = await runHook({
-    command: hook.command,
-    cwd: primaryPath,
-    env: {
-      WORKTREE_PATH: worktree.path,
-      WORKTREE_BRANCH: worktree.branch,
-      WORKTREE_SOURCE: "",
-      WORKTREE_PURPOSE: purpose,
-    },
-    name: `bootstrap ${name}`,
-  }).finally(() => lock.release());
+  /* try/finally, not `.finally()` — `withProgress` returns a Thenable rather than a Promise, so it
+     has no `.finally`. The lock MUST be released on every path: it is what stops two windows
+     bootstrapping the same worktree, and one leaked lock wedges that worktree until a restart. */
+  let exitCode: number | undefined;
+  try {
+    exitCode = await withStep(`Bootstrapping ${name} for ${purpose}…`, (progress) =>
+      runHook({
+        command: hook.command,
+        cwd: primaryPath,
+        env: {
+          WORKTREE_PATH: worktree.path,
+          WORKTREE_BRANCH: worktree.branch,
+          WORKTREE_SOURCE: "",
+          WORKTREE_PURPOSE: purpose,
+        },
+        name: `bootstrap ${name}`,
+        onLine: (line) => progress.report({ message: tail(line) }),
+      }),
+    );
+  } finally {
+    lock.release();
+  }
 
   /* Reports BOTH outcomes. The task panel is opened with focus:false, so a silent failure here
      would be invisible — after the hook has already rewritten .env and possibly reset a database. */

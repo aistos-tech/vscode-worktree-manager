@@ -65,6 +65,9 @@ are still `worktreeManager`-based, and deliberately — see [Naming](#naming).
   is deleted. See below.
 - **Hook approvals** — `Aistos: List Hook Approvals` shows what you have approved;
   `Aistos: Forget Hook Approval…` revokes one.
+- **Update** — `Aistos: Update…` installs the latest release, after checking it against the digest
+  GitHub publishes for the asset. A background check runs once a day and notifies; it never installs
+  on its own. There is no marketplace listing, so nothing else would ever tell you a build is stale.
 - **Logs** — `Aistos: Show Logs` opens the extension's output channel. Failures also raise a toast
   with a **Show Logs** button, so a flow that dies no longer dies quietly.
 
@@ -608,9 +611,10 @@ this for you and nothing signs it.
 
 ### Updating and rolling back
 
-Updating is re-running the install command above — `latest` resolves to the newest release, and
-`--force` replaces what you have. **Nothing tells you a new version exists yet**; that is what
-`Aistos: Update…` is for, and it is not built.
+`Aistos: Update…` fetches the latest release, verifies it against the SHA-256 digest GitHub
+publishes for the asset, installs it and offers a reload. The extension also checks **once a day** on
+activation and tells you when a newer version exists — it never installs on its own, because a
+window reload in the middle of your work is not a thing to do unasked.
 
 Rolling back means downloading an older release asset and installing that:
 

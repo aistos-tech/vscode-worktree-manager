@@ -52,6 +52,7 @@ import {
   togglePinned,
 } from "./state";
 import { forgetApproval, listApprovals } from "./trust";
+import { checkForUpdate, checkForUpdateInBackground } from "./update";
 import { isNotARepo, listWorktrees, originUrl, stderrOf, type Worktree } from "./worktree";
 
 const SWITCH_COMMAND = "worktreeManager.switch";
@@ -74,6 +75,7 @@ const FORGET_APPROVAL_COMMAND = "worktreeManager.hooks.forget";
 const LIST_APPROVALS_COMMAND = "worktreeManager.hooks.listApprovals";
 const BOOTSTRAP_COMMAND = "worktreeManager.bootstrap";
 const SHOW_LOGS_COMMAND = "worktreeManager.showLogs";
+const UPDATE_COMMAND = "worktreeManager.update";
 const RENAME_TOOLTIP = "Rename";
 const DELETE_TOOLTIP = "Delete";
 const BOOTSTRAP_TOOLTIP = "Re-run the post-create hook";
@@ -881,6 +883,11 @@ let issuePanel: IssueView | undefined;
 
 export const activate = async (context: vscode.ExtensionContext) => {
   initLog(context);
+
+  /* Fire-and-forget through `report`, the wrapper that cannot swallow a rejection. Activation must
+     not block on a network call, and a failure here is invisible by construction because nobody
+     asked for this check. */
+  report("Background update check", checkForUpdateInBackground(context));
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   logInfo(`activate — folder: ${root ?? "<none>"}`);
 
@@ -993,6 +1000,9 @@ export const activate = async (context: vscode.ExtensionContext) => {
       vscode.window.showInformationMessage(`Forgot the hook approval for ${picked.path}.`);
     }),
     vscode.commands.registerCommand(SHOW_LOGS_COMMAND, () => showLog()),
+    vscode.commands.registerCommand(UPDATE_COMMAND, () => {
+      report("Check for updates", checkForUpdate(context));
+    }),
     vscode.commands.registerCommand(LIST_APPROVALS_COMMAND, () => {
       const approvals = listApprovals(context);
       if (approvals.length === 0) {

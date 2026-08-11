@@ -1,6 +1,36 @@
 # vscode-worktree-manager
 
-A private VS Code extension shown in the editor as **Aistos** — the repo, the package `name` and the
+## ⚠️ Nothing here may name a client — this repository is published
+
+The source **and the full history** of this repo are public. Every commit is a publication.
+
+**Nothing here may name a client, a customer engagement, or business context.** Not in code, not in
+comments, not in documentation, and **not in commit messages** — a message is published exactly as a
+file is, and it cannot be edited afterwards without rewriting history.
+
+Fixtures use `acme` and `example`. Never a real branch name and never a concrete Linear workspace
+slug. Three shapes leaked before and CI now rejects them: a fixture carrying a personal branch
+prefix, an issue-id-slugged branch name (the form that binds a ticket to the work done on it), and a
+workspace URL with a real slug rather than a `<placeholder>`. A test that asserts an identifier is
+extracted does not care which identifier it is.
+
+📌 A bare `A-1661` in a prompt or an error string is **fine** and is not a shape. It discloses a team
+key and a number. Forbidding it would fire on every user-facing string that explains the feature,
+which is how a guard trains people to ignore it.
+
+📌 **The rule is about vocabulary, not about a list of forbidden words.** The strings that got this
+repo sanitised were `acme-45-example-branch` and *"ticket bodies carry customer names and
+amounts"* — ordinary phrasing, written without a thought, that names what the business does. When an
+example needs a domain, invent one.
+
+`debt-collection` is allowed: it is an internal repo name, not a client, and it is what makes the
+hook contract concrete.
+
+⚠️ **The rule binds from the sanitising commit, not from the day the repo was flipped.** The flip is
+the last step of the publish plan, and history goes public with the source — so a leak committed
+while the repo was still private is published all the same. There was never a safe window.
+
+A VS Code extension shown in the editor as **Aistos** — the repo, the package `name` and the
 extension id all keep `vscode-worktree-manager`, and so do the `worktreeManager.*` command ids. The
 **settings** are `aistos.*`, with the old keys still read as a deprecated alias — every read goes
 through `src/settings.ts`, never `getConfiguration().get` directly. `README.md` → *Naming* says why

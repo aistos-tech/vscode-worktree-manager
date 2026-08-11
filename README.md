@@ -585,24 +585,53 @@ its own diff, so sanitising commits use `--no-verify`.
 ⚠️ While developing the switcher, temporarily use `forceNewWindow: true` — `forceReuseWindow`
 tears down the extension host **and** the debug session mid-call.
 
-## Install locally (no marketplace, no .vsix)
+## Install
 
-`Developer: Install Extension from Location…` → point at this folder.
+No clone, no `bun install`, no build:
 
-Dropping a folder into `~/.vscode/extensions/` has not worked since VS Code 1.75, despite what
-the docs say — the registry `extensions.json` is authoritative.
+```bash
+curl -fsSLO https://github.com/aistos-tech/vscode-worktree-manager/releases/latest/download/aistos.vsix \
+  && code --install-extension aistos.vsix --force \
+  && rm aistos.vsix
+```
+
+`--force` because `code` no-ops when the same version is already installed. `aistos.vsix` is a
+fixed asset name published alongside the versioned one, which is what makes
+`releases/latest/download/…` a stable URL — that path resolves a *name*, so a versioned asset alone
+could not be fetched without first asking the API which version is current.
+
+⚠️ **`code` is not on `PATH` on a fresh macOS install.** Command Palette →
+*Shell Command: Install 'code' command in PATH*.
+
+Releases are built by CI on every version bump. There is no marketplace listing, so nothing installs
+this for you and nothing signs it.
 
 ### Updating and rolling back
 
-There is no marketplace listing and therefore **no auto-update and no version pinning**. Updating is
-re-running *Install Extension from Location…*; rolling back is checking out the older commit and
-doing the same. Keep that in mind before relying on a behaviour that landed recently.
+Updating is re-running the install command above — `latest` resolves to the newest release, and
+`--force` replaces what you have. **Nothing tells you a new version exists yet**; that is what
+`Aistos: Update…` is for, and it is not built.
+
+Rolling back means downloading an older release asset and installing that:
+
+```bash
+gh release download v0.38.0 -R aistos-tech/vscode-worktree-manager -p '*.vsix'
+code --install-extension vscode-worktree-manager-0.38.0.vsix --force
+```
 
 ⚠️ **A teammate on an older build is not merely stale.** Once a repo binds `preDelete` in its
 tracked `.vscode/settings.json`, everyone on that repo gets the setting — but only people who have
 installed *this* extension get the hook. Anyone on an older build keeps running a bare
 `git worktree remove` and orphans a stack per delete, with no signal that anything went wrong.
 The setting cannot warn them, because the code that reads it is the code they do not have.
+
+### From a clone, for development
+
+`Developer: Install Extension from Location…` → point at this folder. Still the right path when you
+are changing the extension, since it needs no release.
+
+Dropping a folder into `~/.vscode/extensions/` has not worked since VS Code 1.75, despite what
+the docs say — the registry `extensions.json` is authoritative.
 
 ## Recovering by hand
 

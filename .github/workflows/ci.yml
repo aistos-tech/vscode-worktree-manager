@@ -55,3 +55,72 @@ jobs:
           echo "::error file=README.md::contributes changed but README.md was not touched"
           diff <(echo "$before") <(echo "$after") || true
           exit 1
+
+  # Releasing lives HERE rather than in its own workflow, gated on `needs: check`. A separate
+  # workflow would trigger on the same `push: main` event and run install/lint/typecheck/test/build
+  # a second time in parallel — and, worse, would publish on a green build of its own while `check`
+  # was still running or already red. `needs:` buys "never publish an untested bundle" for one run
+  # instead of two.
+  release:
+    name: release
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Job-level permissions REPLACE the workflow default above for this job only. Everything else
+    # stays read-only.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+
+      # The version bump IS the release trigger. Every feat bumps the minor and every fix the patch
+      # in the commit that makes the change (CLAUDE.md), so no new step enters the workflow — and a
+      # commit that ships nothing releases nothing.
+      - name: Has this version already been released?
+        id: check
+        env:
+          # `gh` is NOT authenticated by the `permissions` block above. That key scopes the token;
+          # it does not put one in the environment, and gh exits telling you to run `gh auth login`.
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(jq -r .version package.json)
+          # Asked of the API, not of `git tag -l`. actions/checkout fetches no tags by default, so a
+          # local tag lookup is ALWAYS empty on a branch push: the guard would never fire, every
+          # push would attempt a release, and the first non-bump commit would turn main red with
+          # "a release with tag v… already exists".
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "v$version is already released — nothing to do."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$version is new."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ⚠️ Uses the repo's own `package` script. Do NOT inline a vsce invocation here, and never add
+      # a `vscode:prepublish` script to package.json — vsce invokes npm for that hook regardless of
+      # --no-dependencies, which is why README.md → Package bans it.
+      - name: Package
+        if: steps.check.outputs.publish == 'true'
+        run: bun run package
+
+      # Two assets from one file. The versioned name is what a human recognises in the release list;
+      # the fixed `aistos.vsix` is what makes `releases/latest/download/aistos.vsix` a stable URL —
+      # that path resolves a NAME, so a versioned asset alone cannot be fetched without first
+      # querying the API for the current version.
+      - name: Publish
+        if: steps.check.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          set -euo pipefail
+          cp "vscode-worktree-manager-$VERSION.vsix" aistos.vsix
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --generate-notes \
+            "vscode-worktree-manager-$VERSION.vsix" \
+            aistos.vsix

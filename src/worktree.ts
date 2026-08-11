@@ -196,7 +196,7 @@ export const currentBranch = async (gitCwd: string) => {
 
 /* The branch is the commit-ish and is NEVER omitted. `git worktree add <dest>` with no reference
    DWIMs a NEW branch from the dest basename — reproduced on git 2.50.1: with
-   `thblt-thlgn/acme-42-import` existing and dest `worktrees/acme-42-import`, git
+   `dev/acme-42-import` existing and dest `worktrees/acme-42-import`, git
    printed "Preparing worktree (new branch 'acme-42-import')" and left the intended branch
    untouched. Namespaced branches are the normal case here, not an edge. */
 export const addWorktree = ({

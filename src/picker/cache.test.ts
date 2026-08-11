@@ -16,10 +16,10 @@ const worktree = (branch: string): Worktree => ({
 describe("joinOnBranch", () => {
   test("attaches enrichment to the matching branch", () => {
     const joined = joinOnBranch({
-      worktrees: [worktree("a-1661"), worktree("staging")],
-      enrichment: new Map([["a-1661", { identifier: "A-1661", pullRequest: 404 }]]),
+      worktrees: [worktree("acme-42"), worktree("staging")],
+      enrichment: new Map([["acme-42", { identifier: "ACME-42", pullRequest: 404 }]]),
     });
-    expect(joined[0]?.identifier).toBe("A-1661");
+    expect(joined[0]?.identifier).toBe("ACME-42");
     expect(joined[0]?.pullRequest).toBe(404);
     expect(joined[1]?.identifier).toBeUndefined();
   });
@@ -35,8 +35,8 @@ describe("joinOnBranch", () => {
 
   test("ignores enrichment for a branch with no worktree", () => {
     const joined = joinOnBranch({
-      worktrees: [worktree("a-1661")],
-      enrichment: new Map([["gone", { identifier: "A-999" }]]),
+      worktrees: [worktree("acme-42")],
+      enrichment: new Map([["gone", { identifier: "ACME-999" }]]),
     });
     expect(joined).toHaveLength(1);
   });
@@ -46,15 +46,15 @@ describe("reuseItems", () => {
   /* The property D3 depends on: QuickPick matches activeItems by object identity, so a fresh
      object with an identical label silently drops the highlight on every refresh. */
   test("keeps the same instance for a branch that survived", () => {
-    const previous = [{ branch: "a-1661", label: "old" }];
-    const next = [{ branch: "a-1661", label: "new" }];
+    const previous = [{ branch: "acme-42", label: "old" }];
+    const next = [{ branch: "acme-42", label: "new" }];
     const result = reuseItems({ previous, next });
     expect(result[0]).toBe(previous[0]);
   });
 
   test("updates what the surviving instance shows", () => {
-    const previous = [{ branch: "a-1661", label: "old" }];
-    const result = reuseItems({ previous, next: [{ branch: "a-1661", label: "new" }] });
+    const previous = [{ branch: "acme-42", label: "old" }];
+    const result = reuseItems({ previous, next: [{ branch: "acme-42", label: "new" }] });
     expect(result[0]?.label).toBe("new");
   });
 

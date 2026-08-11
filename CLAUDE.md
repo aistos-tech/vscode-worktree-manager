@@ -18,10 +18,16 @@ extracted does not care which identifier it is.
 key and a number. Forbidding it would fire on every user-facing string that explains the feature,
 which is how a guard trains people to ignore it.
 
-📌 **The rule is about vocabulary, not about a list of forbidden words.** The strings that got this
-repo sanitised were `acme-45-example-branch` and *"ticket bodies carry customer names and
-amounts"* — ordinary phrasing, written without a thought, that names what the business does. When an
-example needs a domain, invent one.
+📌 **The rule is about vocabulary, not about a list of forbidden words.** What this repo had to be
+sanitised for was not a client's name in a config file. It was a branch fixture naming a product
+rule, and a comment justifying a cache boundary by describing what kind of personal data the tickets
+hold — ordinary phrasing, written without a thought, that tells a reader what the business does.
+Reword such a rationale rather than deleting it: the design still needs its reason. When an example
+needs a domain, invent one.
+
+⚠️ **That includes this file.** An earlier draft of this very paragraph quoted the two offending
+strings verbatim as illustrations, which would have published them under a heading announcing they
+were sensitive.
 
 `debt-collection` is allowed: it is an internal repo name, not a client, and it is what makes the
 hook contract concrete.

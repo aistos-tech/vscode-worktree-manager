@@ -426,20 +426,20 @@ It is a **webview panel** using the **same renderer as the sidebar** — the sam
 CSP, the same images. It scrolls, so nothing is truncated: full description, full comment thread.
 
 ```
-┌─ A-1661 ────────────────────────────────────┐
-│ A-1661                                      │
-│ Import mapping for the onboarding         │
-│ [In Progress] Thibault · PR #421 open       │
+┌─ ACME-42 ───────────────────────────────────┐
+│ ACME-42                                     │
+│ Import mapping for the onboarding flow      │
+│ [In Progress] Léa · PR #421 open            │
 │                                             │
-│ Le fichier d'import arrive avec des        │
-│ colonnes déjà partiellement normali…          │
+│ Le fichier d'import arrive avec des         │
+│ colonnes déjà partiellement normalisées…    │
 │  ☑ mapping des colonnes du CSV              │
 │  ☐ règle de rapprochement                   │
 │  ┌───────────────────┐                      │
 │  │  screenshot.png   │   ← real image       │
 │  └───────────────────┘                      │
 │  ── 3 comments ──                           │
-│  Thibault · 2d   On garde le scope invoice… │  ↕ scrolls
+│  Léa · 2d   On garde le scope import pour…  │  ↕ scrolls
 ├─────────────────────────────────────────────┤
 │ [Open worktree O] [Open in Linear L] [PR P] │  ← footer
 └─────────────────────────────────────────────┘

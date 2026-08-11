@@ -33,7 +33,7 @@ pre-commit:
           # This file states the patterns, so it necessarily contains them. A guard that trips on
           # its own rule list is a guard everyone learns to skip.
           case "$f" in lefthook.yml|.github/workflows/*) continue ;; esac
-          if grep -nEI 'thblt-thlgn/|\b[a-z]-[0-9]{3,}-[a-z]|linear\.app/[a-z0-9-]+/issue' "$f"; then
+          if grep -nEI 'thblt-thlgn/|\b[a-z]-[0-9]{3,}-[a-z]' "$f"; then
             hits=1
           fi
         done

@@ -398,6 +398,7 @@
     "test": "bun test",
     "lint": "biome check .",
     "format": "biome check --write .",
+    "hooks": "lefthook install --force",
     "package": "bun run build && bun x @vscode/vsce package --no-dependencies --skip-license"
   },
   "devDependencies": {

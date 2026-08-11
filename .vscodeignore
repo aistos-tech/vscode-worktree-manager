@@ -17,6 +17,7 @@ biome.json
 bun.lock
 bun.lockb
 CLAUDE.md
+lefthook.yml
 .gitignore
 .editorconfig
 *.vsix

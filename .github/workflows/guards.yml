@@ -13,3 +13,16 @@ jobs:
     uses: aistos-tech/.github/.github/workflows/gitleaks.yml@main
   commits:
     uses: aistos-tech/.github/.github/workflows/commitlint.yml@main
+
+  # This repo is public, so a push IS a publication and gitleaks is not enough: it catches
+  # credentials, and what this repo nearly published was client names.
+  #
+  # ⚠️ The `secrets:` line is load-bearing and must not be dropped to match the two calls above. A
+  # called workflow receives NOTHING from its caller by default, so without it the guard would scan
+  # against an empty term list, find nothing, and report green on a leaking tree — a vacuous pass
+  # that reads as evidence. The called workflow declares the secret `required: true` so that
+  # omitting it fails loudly rather than silently.
+  public-repo:
+    uses: aistos-tech/.github/.github/workflows/public-repo-guard.yml@main
+    secrets:
+      terms: ${{ secrets.PUBLIC_REPO_TERMS }}

@@ -1,0 +1,46 @@
+# Pre-commit half of the public-repo guard.
+#
+# Install it once per clone: `bun run hooks`. It is NOT installed by `bun install` -- bun does not
+# run the `prepare` lifecycle script (measured on 1.3.14), so wiring it there would have been a
+# hook that silently never existed. CI is the backstop either way.
+#
+# This checks SHAPES only, never the term list. The terms live in an organisation Actions secret
+# because a denylist of client names cannot be committed to the public repo it protects -- so the
+# local half cannot see them without 1Password unlocked at commit time, and a hook that fails when
+# your vault is locked is a hook you learn to `--no-verify` past.
+#
+# Shapes are the half worth having locally anyway: they are what actually leaked, they are not
+# secret, and catching them here means the fix is an amend rather than a force-push. Terms are
+# caught by aistos-tech/.github -> public-repo-guard.yml on every push and pull request.
+#
+# ⚠️ A commit that REMOVES one of these shapes still contains it in its own diff. Use
+# `git commit --no-verify` for a sanitising commit -- the same exception dotfiles/lefthook.yml
+# carries, for the same reason.
+
+pre-commit:
+  parallel: true
+  commands:
+    # Fixtures must not name a real branch, a real person's branch prefix, or a real Linear
+    # workspace. A bare issue identifier like A-1661 is deliberately NOT matched: it is the example
+    # in prompts, error strings and docs, and matching it fires on eight files of ordinary text.
+    public-repo-shapes:
+      glob: "*.{ts,md,json,yml,yaml}"
+      run: |
+        set -euo pipefail
+        hits=0
+        for f in {staged_files}; do
+          [ -f "$f" ] || continue
+          # This file states the patterns, so it necessarily contains them. A guard that trips on
+          # its own rule list is a guard everyone learns to skip.
+          case "$f" in lefthook.yml|.github/workflows/*) continue ;; esac
+          if grep -nEI 'thblt-thlgn/|\b[a-z]-[0-9]{3,}-[a-z]|linear\.app/[a-z0-9-]+/issue' "$f"; then
+            hits=1
+          fi
+        done
+        if [ "$hits" -ne 0 ]; then
+          echo ""
+          echo "This repo is public. Fixtures use acme / example -- never a real branch name," >&2
+          echo "a personal branch prefix, or a concrete Linear workspace slug." >&2
+          echo "Sanitising a line? Commit it with --no-verify." >&2
+          exit 1
+        fi

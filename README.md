@@ -569,10 +569,18 @@ which is exactly why the status bar item's colour works here.
 
 ```bash
 bun install
+bun run hooks        # once per clone — pre-commit guard, see below
 bun run dev          # incremental build
 ```
 
 Then `F5` for the Extension Development Host.
+
+⚠️ **`bun run hooks` is a separate step because `bun install` does not run `prepare`.** Measured on
+bun 1.3.14: wiring the hook to that lifecycle script would have installed nothing, silently. The
+hook rejects a fixture naming a real branch, a personal branch prefix or a real Linear workspace —
+this repo is public, so a push is a publication. Client names themselves are checked in CI, against
+a list that cannot live in a public repo. A commit that *removes* one of these still contains it in
+its own diff, so sanitising commits use `--no-verify`.
 
 ⚠️ While developing the switcher, temporarily use `forceNewWindow: true` — `forceReuseWindow`
 tears down the extension host **and** the debug session mid-call.

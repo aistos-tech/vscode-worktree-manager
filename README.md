@@ -4,6 +4,10 @@ Worktrees, Linear issues and pull requests in one switcher, with per-repo bootst
 
 Shown in VS Code as **Aistos**; every command is under the `Aistos:` category in the palette.
 
+📌 **Cloning this outside Aistos?** `.claude/settings.json` points at a private plugin
+marketplace, so the plugin fetch fails and everything else works. That is expected, not a bug —
+nothing in the extension depends on it. Security policy: [SECURITY.md](SECURITY.md).
+
 📌 **The settings are `aistos.*`. The old `worktreeManager.*` keys are still read**, so an
 unmigrated `.vscode/settings.json` keeps working. The extension *identifier* and the command ids
 are still `worktreeManager`-based, and deliberately — see [Naming](#naming).

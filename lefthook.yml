@@ -20,6 +20,14 @@
 pre-commit:
   parallel: true
   commands:
+    # The manifest the shared aistos-dev workflow skills read. Checked locally as well as in CI,
+    # because the failure it prevents is a skill refusing mid-pipeline — and an amend is cheaper than a
+    # re-push. Globbed on the manifest itself: nothing else can invalidate it, except a package.json
+    # script rename, which CI catches on the PR.
+    workflow-manifest:
+      glob: ".claude/aistos-workflow.json"
+      run: bash scripts/check-workflow-manifest.sh
+
     # Fixtures must not name a real branch, a real person's branch prefix, or a real Linear
     # workspace. A bare issue identifier like A-1661 is deliberately NOT matched: it is the example
     # in prompts, error strings and docs, and matching it fires on eight files of ordinary text.

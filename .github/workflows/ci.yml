@@ -27,6 +27,13 @@ jobs:
       - run: bun run lint
       - run: bun run typecheck
 
+      # The shared aistos-dev skills read .claude/aistos-workflow.json for this repo's base branch,
+      # gate commands, security paths and tooling. A malformed one makes them refuse at the moment they
+      # act — correct, but late. A deliberate subset of `aistos-workflow-config --validate`, in jq,
+      # because the authoritative validator ships in a PRIVATE plugin repo and a gate that needs a
+      # deploy key to run is a gate that ends up disabled.
+      - run: bash scripts/check-workflow-manifest.sh
+
       # The pure functions here (porcelain parsing, branch->identifier, the picker join) are
       # deterministic and painful to re-check by hand across a 57-row manual table. bun test needs
       # no runner dependency beyond @types/bun, which the typecheck above also consumes.

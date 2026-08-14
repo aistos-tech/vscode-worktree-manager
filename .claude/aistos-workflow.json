@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "minPluginVersion": "1.6.0",
+  "baseBranch": "main",
+  "gates": {
+    "fast": ["bun run lint", "bun run typecheck"],
+    "full": [
+      "bun run lint",
+      "bun run typecheck",
+      "bun run test",
+      "bun run build"
+    ]
+  },
+  "securityPaths": {
+    "exclude": "^\\.claude/|\\.md$",
+    "include": "^\\.github/workflows/|src/(trust|hooks)\\.ts"
+  },
+  "worktrees": "none",
+  "tooling": {
+    "ghBot": false,
+    "prStack": false,
+    "tally": true
+  },
+  "linear": {
+    "team": "Aïstos",
+    "mcpPrefix": "mcp__plugin_aistos-dev_linear__"
+  }
+}

@@ -6,5 +6,32 @@
   },
   "enabledPlugins": {
     "aistos-dev@aistos": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(aistos-workflow-config:*)",
+      "Bash(aistos-tally-findings.ts:*)",
+      "Bash(aistos-pr-stack.ts:*)",
+      "Bash(aistos-gh-bot.ts:*)",
+      "Bash(bun run lint)",
+      "Bash(bun run typecheck)",
+      "Bash(bun run test)",
+      "Bash(bun run build)",
+      "Bash(bun install)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh api:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(git switch:*)",
+      "Bash(git add:*)",
+      "Bash(git stash:*)"
+    ]
   }
 }

@@ -1,9 +1,12 @@
 {
   "version": 1,
-  "minPluginVersion": "1.6.0",
+  "minPluginVersion": "1.6.2",
   "baseBranch": "main",
   "gates": {
-    "fast": ["bun run lint", "bun run typecheck"],
+    "fast": [
+      "bun run lint",
+      "bun run typecheck"
+    ],
     "full": [
       "bun run lint",
       "bun run typecheck",
@@ -17,7 +20,7 @@
   },
   "worktrees": "none",
   "tooling": {
-    "ghBot": false,
+    "ghBot": true,
     "prStack": false,
     "tally": true
   },

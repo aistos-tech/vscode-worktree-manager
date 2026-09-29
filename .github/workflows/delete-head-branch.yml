@@ -1,0 +1,11 @@
+name: Delete head branch on merge
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  delete:
+    uses: aistos-tech/.github/.github/workflows/delete-head-branch.yml@main
+    permissions:
+      contents: write

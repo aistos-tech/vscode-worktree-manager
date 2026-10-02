@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 
 /* `~` is a SHELL convention. Node expands nothing: `path.resolve("~/workspace/worktrees")` yields
    `<cwd>/~/workspace/worktrees`, and the extension host's cwd is `/`, so a perfectly ordinary
@@ -20,8 +20,18 @@ export const expandHome = (input: string) => {
 
 /* The one place a user-supplied path becomes something to hand to the filesystem: expand the
    tilde first, then make it absolute. Order matters — `isAbsolute("~/x")` is false, so resolving
-   before expanding is exactly the bug above. */
-export const toAbsolutePath = (input: string) => {
+   before expanding is exactly the bug above.
+
+   A relative path resolves against `base`, never the process cwd: the extension host runs from
+   `/`, so a bare `resolve("worktrees")` meant `/worktrees`. */
+export const toAbsolutePath = (input: string, base: string) => {
   const expanded = expandHome(input);
-  return isAbsolute(expanded) ? expanded : resolve(expanded);
+  return isAbsolute(expanded) ? expanded : resolve(base, expanded);
 };
+
+/* Empty resolves to `<parent of primary>/worktrees`; a relative value resolves against the primary
+   checkout, the one directory every worktree of the repo agrees on. */
+export const worktreesRootFor = (configured: string, primaryPath: string) =>
+  configured.trim()
+    ? toAbsolutePath(configured, primaryPath)
+    : join(dirname(primaryPath), "worktrees");

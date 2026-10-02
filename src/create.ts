@@ -69,7 +69,7 @@ const askSource = async (gitCwd: string) => {
   });
 };
 
-const askDest = (defaultPath: string) =>
+const askDest = (defaultPath: string, gitCwd: string) =>
   vscode.window.showInputBox({
     title: "New worktree — destination",
     value: defaultPath,
@@ -79,7 +79,7 @@ const askDest = (defaultPath: string) =>
       if (!trimmed) return "Destination is required.";
       /* Same expansion as the accept path. Without it the box validated `/~/…`, found nothing
          there, and cheerfully reported the destination as free. */
-      const path = toAbsolutePath(trimmed);
+      const path = toAbsolutePath(trimmed, gitCwd);
       return existsSync(path) ? `"${path}" already exists.` : undefined;
     },
   });
@@ -189,11 +189,11 @@ export const createWorktree = async ({
   if (!existing && !source) return;
 
   const root = resolveWorktreesRoot(gitCwd);
-  const raw = await askDest(join(root, basename(branch)));
+  const raw = await askDest(join(root, basename(branch)), gitCwd);
   if (!raw) return;
   /* Expanded here too, not only in resolveWorktreesRoot: the destination is an input box the user
      can retype, and a tilde typed there hit exactly the same ENOENT. */
-  const dest = toAbsolutePath(raw);
+  const dest = toAbsolutePath(raw, gitCwd);
 
   /* The CLI this ports runs this unconditionally, ahead of its own existing/new branch. Without it
      a first worktree under a not-yet-created root fails with ENOENT rather than being created. */

@@ -92,7 +92,7 @@ env files, ports, containers, install/build. A repo binds two commands in its **
 |---|---|
 | `aistos.hooks.postCreate` | Runs after a worktree is created. Empty disables it. |
 | `aistos.hooks.preDelete` | Runs **before** deletion. **Non-zero aborts the delete.** Empty disables it. |
-| `aistos.worktreesRoot` | Where new worktrees go. Empty → `<parent of primary>/worktrees`. `~` is expanded. |
+| `aistos.worktreesRoot` | Where new worktrees go. Empty → `<parent of primary>/worktrees`. A relative path is resolved against the primary checkout, and so is one typed in the destination prompt. `~` is expanded. |
 
 ⚠️ **`~` is expanded here and in the destination prompt, and it did not used to be.** `~` is a
 *shell* convention — Node expands nothing, and `path.resolve("~/workspace/worktrees")` returns

@@ -2,7 +2,7 @@
   "name": "vscode-worktree-manager",
   "displayName": "Aistos",
   "description": "Worktrees, Linear issues and pull requests in one switcher, with per-repo bootstrap hooks",
-  "version": "0.40.1",
+  "version": "0.40.2",
   "publisher": "aistos-tech",
   "private": true,
   "license": "MIT",
@@ -98,7 +98,7 @@
           "type": "string",
           "default": "",
           "scope": "window",
-          "markdownDescription": "Where new worktrees are created. Empty resolves to `<parent of the primary worktree>/worktrees`. `~` is expanded."
+          "markdownDescription": "Where new worktrees are created. Empty resolves to `<parent of the primary worktree>/worktrees`. A relative path is resolved against the primary checkout. `~` is expanded."
         },
         "aistos.create.open": {
           "type": "string",

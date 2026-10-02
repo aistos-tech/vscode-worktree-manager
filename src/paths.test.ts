@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { expandHome, toAbsolutePath } from "./paths";
+import { expandHome, toAbsolutePath, worktreesRootFor } from "./paths";
 
 const HOME = homedir();
 
@@ -41,16 +41,40 @@ describe("toAbsolutePath", () => {
      produced `<cwd>/~/workspace/worktrees` — and the extension host's cwd is `/`, which is how
      `mkdirSync('/~/workspace/worktrees')` came to fail with ENOENT. */
   test("expands before deciding whether the path is absolute", () => {
-    const result = toAbsolutePath("~/workspace/worktrees");
+    const result = toAbsolutePath("~/workspace/worktrees", "/repo/acme");
     expect(result).toBe(join(HOME, "workspace/worktrees"));
     expect(result.startsWith("/~")).toBe(false);
   });
 
   test("passes an absolute path through unchanged", () => {
-    expect(toAbsolutePath("/tmp/worktrees")).toBe("/tmp/worktrees");
+    expect(toAbsolutePath("/tmp/worktrees", "/repo/acme")).toBe("/tmp/worktrees");
   });
 
-  test("resolves a relative path against the process cwd", () => {
-    expect(toAbsolutePath("worktrees")).toBe(join(process.cwd(), "worktrees"));
+  /* The extension host's cwd is `/`, so resolving against it put a relative value at the root. */
+  test("resolves a relative path against the base, not the process cwd", () => {
+    expect(toAbsolutePath("worktrees", "/repo/acme")).toBe("/repo/acme/worktrees");
+    expect(toAbsolutePath("../worktrees", "/repo/acme")).toBe("/repo/worktrees");
+  });
+});
+
+describe("worktreesRootFor", () => {
+  test("defaults to a worktrees folder beside the primary checkout", () => {
+    expect(worktreesRootFor("", "/repo/acme")).toBe("/repo/worktrees");
+    expect(worktreesRootFor("   ", "/repo/acme")).toBe("/repo/worktrees");
+  });
+
+  test("resolves a relative value against the primary checkout", () => {
+    expect(worktreesRootFor(".worktrees", "/repo/acme")).toBe("/repo/acme/.worktrees");
+    expect(worktreesRootFor("../acme-worktrees", "/repo/acme")).toBe("/repo/acme-worktrees");
+  });
+
+  test("expands ~", () => {
+    expect(worktreesRootFor("~/workspace/worktrees", "/repo/acme")).toBe(
+      join(HOME, "workspace/worktrees"),
+    );
+  });
+
+  test("keeps an absolute value", () => {
+    expect(worktreesRootFor("/srv/worktrees", "/repo/acme")).toBe("/srv/worktrees");
   });
 });
